@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1923">
-<title>PoolPro v4</title>
+<title>akaPoolCO Pool Services</title>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ─────────────────────────────────────────
@@ -508,8 +508,8 @@ a{color:var(--accent);}
 <div id="lock-screen">
   <div style="width:100%;max-width:320px;padding:28px 22px;text-align:center;">
     <div style="font-size:52px;margin-bottom:14px;">🏊</div>
-    <div style="font-size:28px;font-weight:900;letter-spacing:-.6px;margin-bottom:4px;">PoolPro</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:26px;font-family:var(--mono);">akaPoolCO Pool Services</div>
+    <div style="font-size:28px;font-weight:900;letter-spacing:-.6px;margin-bottom:4px;">akaPoolCO</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:26px;font-family:var(--mono);">Pool Services</div>
     <div class="form-group">
       <input class="form-input" type="password" id="lock-pin"
         placeholder="PIN" style="text-align:center;font-size:22px;letter-spacing:6px;"
@@ -527,7 +527,7 @@ a{color:var(--accent);}
 <div id="app">
   <div id="header">
     <div class="hdr-left">
-      <div class="hdr-title">🏊 PoolPro</div>
+      <div class="hdr-title">🏊 akaPoolCO</div>
       <div class="hdr-sub" id="hdr-date"></div>
     </div>
     <div class="flex gap8 items-center">
@@ -667,7 +667,7 @@ a{color:var(--accent);}
         <button class="btn btn-ghost btn-full" onclick="document.getElementById('import-file').click()">📥 Import JSON</button>
         <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(event)">
       </div>
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">PoolPro v4 · akaPoolCO Pool Services · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v1 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1007,8 +1007,8 @@ a{color:var(--accent);}
 //  STORAGE
 // ─────────────────────────────────────────────────────────────
 const S={
-  get:k=>{try{return JSON.parse(localStorage.getItem('pp3_'+k));}catch{return null;}},
-  set:(k,v)=>localStorage.setItem('pp3_'+k,JSON.stringify(v))
+  get:k=>{try{return JSON.parse(localStorage.getItem('akav1_'+k));}catch{return null;}},
+  set:(k,v)=>localStorage.setItem('akav1_'+k,JSON.stringify(v))
 };
 
 // ─────────────────────────────────────────────────────────────
