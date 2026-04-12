@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1923">
-<title>akaPoolCO Pool Services</title>
+<title>akaPoolCO Pool Services v2</title>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ─────────────────────────────────────────
@@ -70,6 +70,39 @@ html,body{
 button,input,select,textarea{font-family:var(--font);}
 button{cursor:pointer;}
 a{color:var(--accent);}
+
+/* ─────────────────────────────────────────
+   WORK TOGGLES (pool profile)
+───────────────────────────────────────── */
+.work-toggle-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.work-toggle{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
+.work-toggle-track{width:44px;height:26px;background:var(--border2);border-radius:13px;transition:background .2s;position:relative;flex-shrink:0;}
+.work-toggle-track.on{background:var(--green);}
+.work-toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.work-toggle-track.on .work-toggle-thumb{transform:translateX(18px);}
+.work-toggle-lbl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.work-toggle.on .work-toggle-lbl{color:var(--green);}
+
+/* FREQ SELECTOR (pool profile) */
+.freq-btns{display:flex;gap:6px;margin-top:6px;}
+.freq-btn{flex:1;padding:8px 4px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--surface2);font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s;}
+.freq-btn.active{border-color:var(--accent);background:var(--blue-lt);color:var(--accent);}
+
+/* DAY SELECTOR (pool profile) */
+.day-btns{display:flex;gap:4px;margin-top:6px;}
+.day-btn{flex:1;padding:7px 2px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s;}
+.day-btn.active{border-color:var(--accent);background:var(--blue-lt);color:var(--accent);}
+
+/* WEEK VARIANT (bi-weekly A/B, monthly 1st-4th) */
+.week-var-btns{display:flex;gap:6px;margin-top:6px;}
+.week-var-btn{flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s;}
+.week-var-btn.active{border-color:var(--accent);background:var(--blue-lt);color:var(--accent);}
+
+/* NEXT DUE chip on route card */
+.next-due{font-size:10.5px;font-family:var(--mono);margin-top:2px;}
+.next-due.overdue{color:var(--red);font-weight:700;}
+.next-due.soon{color:var(--yellow);font-weight:600;}
+.next-due.ok{color:var(--muted);}
 
 /* ─────────────────────────────────────────
    SHELL
@@ -558,7 +591,6 @@ a{color:var(--accent);}
         <span class="text-xs text-muted fw700">Sort:</span>
         <button class="sbtn active" id="sb-date" onclick="setSort('date')">📅 Date</button>
         <button class="sbtn" id="sb-status" onclick="setSort('status')">🔴 Status</button>
-        <button class="sbtn" id="sb-freq" onclick="setSort('freq')">📋 Freq</button>
       </div>
       <div class="filter-tabs" id="freq-tabs">
         <button class="ftab active" onclick="setFreq('all')">All</button>
@@ -631,7 +663,6 @@ a{color:var(--accent);}
         <div class="form-group"><label class="form-label">Service ID <span style="font-weight:400;color:var(--hint);">(from EmailJS → Email Services)</span></label><input class="form-input" id="ejs-svc" placeholder="service_xxxxxxx"></div>
         <div class="form-group"><label class="form-label">Template ID <span style="font-weight:400;color:var(--hint);">(from EmailJS → Email Templates)</span></label><input class="form-input" id="ejs-tpl" placeholder="template_xxxxxxx"></div>
         <div class="form-group"><label class="form-label">Public Key <span style="font-weight:400;color:var(--hint);">(from EmailJS → Account → API Keys)</span></label><input class="form-input" id="ejs-key" placeholder="your_public_key"></div>
-        <div class="form-group"><label class="form-label">Your Email <span style="font-weight:400;color:var(--hint);">(you get a copy of every report)</span></label><input class="form-input" id="ejs-myemail" type="email" placeholder="you@youremail.com"></div>
         <div class="form-group"><label class="form-label">Your Business Name</label><input class="form-input" id="biz-name" placeholder="Mike's Pool Service"></div>
         <button class="btn btn-primary btn-full" onclick="saveEmail()">Save Email Settings</button>
         <button class="btn btn-ghost btn-full" style="margin-top:8px;" onclick="sendTestEmail()">📨 Send Test Email to Myself</button>
@@ -669,7 +700,7 @@ a{color:var(--accent);}
         <button class="btn btn-ghost btn-full" onclick="document.getElementById('import-file').click()">📥 Import JSON</button>
         <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(event)">
       </div>
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v1 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v2 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -712,16 +743,7 @@ a{color:var(--accent);}
   <div class="sheet-handle"></div>
   <div class="sheet-title" id="pool-sheet-title">Add Pool</div>
   <input type="hidden" id="edit-pool-idx">
-  <div class="form-row">
-    <div class="form-group"><label class="form-label">Pool Name</label><input class="form-input" id="p-name" placeholder="Pool 1"></div>
-    <div class="form-group"><label class="form-label">Frequency</label>
-      <select class="form-select" id="p-freq">
-        <option value="weekly">Weekly</option>
-        <option value="biweekly">Bi-weekly</option>
-        <option value="monthly">Monthly</option>
-      </select>
-    </div>
-  </div>
+  <div class="form-group"><label class="form-label">Pool Name</label><input class="form-input" id="p-name" placeholder="Pool 1"></div>
   <div class="form-group"><label class="form-label">Address</label><input class="form-input" id="p-addr" placeholder="123 Main St, Reno NV"></div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Owner Name</label><input class="form-input" id="p-owner" placeholder="Jane Smith"></div>
@@ -770,18 +792,80 @@ a{color:var(--accent);}
     </div>
   </div>
 
-  <div class="form-group">
-    <label class="form-label">Service Days</label>
-    <div class="flex gap6" style="flex-wrap:wrap;" id="day-picker">
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="0"> Sun</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="1"> Mon</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="2"> Tue</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="3"> Wed</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="4"> Thu</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="5"> Fri</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;"><input type="checkbox" value="6"> Sat</label>
+  <!-- SCHEDULE BLOCK -->
+  <div style="background:var(--surface2);border-radius:var(--r);padding:10px 13px;margin-bottom:13px;">
+    <div class="form-label" style="margin-bottom:6px;">Full Log Schedule</div>
+
+    <div class="form-label" style="font-size:10px;margin-bottom:2px;">Frequency</div>
+    <div class="freq-btns">
+      <button type="button" class="freq-btn active" id="fb-weekly"   onclick="setFreqBtn('weekly')">Weekly</button>
+      <button type="button" class="freq-btn"        id="fb-biweekly" onclick="setFreqBtn('biweekly')">Bi-weekly</button>
+      <button type="button" class="freq-btn"        id="fb-monthly"  onclick="setFreqBtn('monthly')">Monthly</button>
+    </div>
+    <input type="hidden" id="p-freq" value="weekly">
+
+    <div class="form-label" style="font-size:10px;margin-top:10px;margin-bottom:2px;">Service Day</div>
+    <div class="day-btns" id="p-day-btns">
+      <button type="button" class="day-btn" id="db-0" onclick="setDayBtn(0)">Su</button>
+      <button type="button" class="day-btn" id="db-1" onclick="setDayBtn(1)">Mo</button>
+      <button type="button" class="day-btn" id="db-2" onclick="setDayBtn(2)">Tu</button>
+      <button type="button" class="day-btn" id="db-3" onclick="setDayBtn(3)">We</button>
+      <button type="button" class="day-btn" id="db-4" onclick="setDayBtn(4)">Th</button>
+      <button type="button" class="day-btn" id="db-5" onclick="setDayBtn(5)">Fr</button>
+      <button type="button" class="day-btn" id="db-6" onclick="setDayBtn(6)">Sa</button>
+    </div>
+    <input type="hidden" id="p-day" value="">
+
+    <!-- Bi-weekly: Week A or B -->
+    <div id="biweekly-opts" style="display:none;margin-top:8px;">
+      <div class="form-label" style="font-size:10px;margin-bottom:2px;">Which week?</div>
+      <div class="week-var-btns">
+        <button type="button" class="week-var-btn active" id="wv-A" onclick="setWeekVar('A')">Week A</button>
+        <button type="button" class="week-var-btn"        id="wv-B" onclick="setWeekVar('B')">Week B</button>
+      </div>
+    </div>
+    <input type="hidden" id="p-weekvar" value="A">
+
+    <!-- Monthly: which occurrence -->
+    <div id="monthly-opts" style="display:none;margin-top:8px;">
+      <div class="form-label" style="font-size:10px;margin-bottom:2px;">Which occurrence?</div>
+      <div class="week-var-btns">
+        <button type="button" class="week-var-btn active" id="mo-1" onclick="setMonthOcc(1)">1st</button>
+        <button type="button" class="week-var-btn"        id="mo-2" onclick="setMonthOcc(2)">2nd</button>
+        <button type="button" class="week-var-btn"        id="mo-3" onclick="setMonthOcc(3)">3rd</button>
+        <button type="button" class="week-var-btn"        id="mo-4" onclick="setMonthOcc(4)">4th</button>
+      </div>
+    </div>
+    <input type="hidden" id="p-monthocc" value="1">
+  </div>
+
+  <!-- WORK TO BE PERFORMED -->
+  <div style="background:var(--surface2);border-radius:var(--r);padding:10px 13px;margin-bottom:13px;">
+    <div class="form-label" style="margin-bottom:8px;">Work to be Performed</div>
+    <div class="work-toggle-row" id="profile-work-toggles">
+      <div class="work-toggle" data-work="test-only" onclick="toggleProfileWork(this)">
+        <div class="work-toggle-track"><div class="work-toggle-thumb"></div></div>
+        <span class="work-toggle-lbl">Test Only</span>
+      </div>
+      <div class="work-toggle" data-work="leaves" onclick="toggleProfileWork(this)">
+        <div class="work-toggle-track"><div class="work-toggle-thumb"></div></div>
+        <span class="work-toggle-lbl">Leaves</span>
+      </div>
+      <div class="work-toggle" data-work="brush" onclick="toggleProfileWork(this)">
+        <div class="work-toggle-track"><div class="work-toggle-thumb"></div></div>
+        <span class="work-toggle-lbl">Brush</span>
+      </div>
+      <div class="work-toggle" data-work="skimmer" onclick="toggleProfileWork(this)">
+        <div class="work-toggle-track"><div class="work-toggle-thumb"></div></div>
+        <span class="work-toggle-lbl">Skimmer</span>
+      </div>
+      <div class="work-toggle" data-work="filter" onclick="toggleProfileWork(this)">
+        <div class="work-toggle-track"><div class="work-toggle-thumb"></div></div>
+        <span class="work-toggle-lbl">Filter</span>
+      </div>
     </div>
   </div>
+
   <div class="form-group"><label class="form-label">Notes / Gate Code</label><textarea class="form-textarea" id="p-notes" placeholder="Gate code, dog in yard, etc."></textarea></div>
 
   <div class="flex gap8 mt16" style="margin-top:14px;">
@@ -1009,8 +1093,8 @@ a{color:var(--accent);}
 //  STORAGE
 // ─────────────────────────────────────────────────────────────
 const S={
-  get:k=>{try{return JSON.parse(localStorage.getItem('akav1_'+k));}catch{return null;}},
-  set:(k,v)=>localStorage.setItem('akav1_'+k,JSON.stringify(v))
+  get:k=>{try{return JSON.parse(localStorage.getItem('akav2_'+k));}catch{return null;}},
+  set:(k,v)=>localStorage.setItem('akav2_'+k,JSON.stringify(v))
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -1020,7 +1104,7 @@ let pools       = S.get('pools')    || [];
 let inventory   = S.get('inv')      || [];
 let logs        = S.get('logs')     || [];
 let settings    = S.get('settings') || {pin:'1234',bizName:'Pool Service',minDose:4,clStrength:.10,defCYA:70,defSalt:3200};
-let emailCfg    = S.get('email')    || {svcId:'',tplId:'',pubKey:'',myEmail:''};
+let emailCfg    = S.get('email')    || {svcId:'',tplId:'',pubKey:''};
 let sortMode    = 'date';
 let freqFilter  = 'all';
 let calView     = 'month';
@@ -1046,7 +1130,7 @@ function unlock(){
 function hardReset(){
   if(confirm('This will reset your PIN to 1234 and clear ALL saved data (pools, logs, settings). Continue?')){
     // Wipe every akav1_ key from localStorage
-    Object.keys(localStorage).filter(k=>k.startsWith('akav1_')).forEach(k=>localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k=>k.startsWith('akav2_')).forEach(k=>localStorage.removeItem(k));
     // Also wipe old pp3_ keys in case they were causing the issue
     Object.keys(localStorage).filter(k=>k.startsWith('pp3_')||k.startsWith('pp_')).forEach(k=>localStorage.removeItem(k));
     alert('Done! PIN is now 1234. Reloading...');
@@ -1447,6 +1531,113 @@ function statusBarColor(s){
 }
 
 // ─────────────────────────────────────────────────────────────
+//  SCHEDULE HELPERS
+// ─────────────────────────────────────────────────────────────
+
+// Called by calendar to determine if a pool is scheduled on a given date string
+function isPoolScheduledOn(pool, dateStr){
+  if(!pool.schedDay && pool.schedDay !== 0) return false;
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = d.getDay();
+  if(dow !== pool.schedDay) return false;
+
+  if(pool.frequency === 'weekly') return true;
+
+  if(pool.frequency === 'biweekly'){
+    // Use Jan 6 2025 (a Monday) as epoch for Week A
+    const epoch = new Date('2025-01-06T00:00:00');
+    const diffDays = Math.round((d - epoch) / 86400000);
+    const weekNum = Math.floor(diffDays / 7);
+    const isWeekA = (weekNum % 2) === 0;
+    return pool.schedWeekVar === 'B' ? !isWeekA : isWeekA;
+  }
+
+  if(pool.frequency === 'monthly'){
+    // nth occurrence of the weekday in the month
+    const occ = pool.schedMonthOcc || 1;
+    const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    const firstDOW = firstOfMonth.getDay();
+    let firstOccDay = pool.schedDay - firstDOW;
+    if(firstOccDay <= 0) firstOccDay += 7;
+    const targetDate = firstOccDay + (occ - 1) * 7;
+    return d.getDate() === targetDate;
+  }
+  return false;
+}
+
+// Next service due date from a given date
+function nextDueDate(pool, fromDateStr){
+  if(!pool.frequency || (!pool.schedDay && pool.schedDay !== 0)) return null;
+  const from = new Date((fromDateStr || new Date().toISOString().split('T')[0]) + 'T00:00:00');
+  // Search forward up to 60 days
+  for(let i = 1; i <= 60; i++){
+    const d = new Date(from.getTime() + i * 86400000);
+    const ds = d.toISOString().split('T')[0];
+    if(isPoolScheduledOn(pool, ds)) return ds;
+  }
+  return null;
+}
+
+function nextDueHtml(pool){
+  const lastFullLog = [...logs].filter(l=>l.poolId===pool.id&&!l.skipped&&!l.isQuickVisit)
+    .sort((a,b)=>b.date.localeCompare(a.date))[0];
+  const fromDate = lastFullLog ? lastFullLog.date : null;
+  const next = nextDueDate(pool, fromDate || new Date().toISOString().split('T')[0]);
+  if(!next) return '';
+  const today = new Date().toISOString().split('T')[0];
+  const daysUntil = Math.round((new Date(next+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+  if(daysUntil < 0) return `<div class="next-due overdue">Overdue ${Math.abs(daysUntil)}d</div>`;
+  if(daysUntil === 0) return `<div class="next-due soon">Due today</div>`;
+  if(daysUntil <= 3) return `<div class="next-due soon">Due in ${daysUntil}d (${next})</div>`;
+  return `<div class="next-due ok">Next: ${next}</div>`;
+}
+
+// Pool form toggle helpers
+function setFreqBtn(val){
+  document.getElementById('p-freq').value = val;
+  ['weekly','biweekly','monthly'].forEach(v=>{
+    document.getElementById('fb-'+v).classList.toggle('active', v===val);
+  });
+  document.getElementById('biweekly-opts').style.display = val==='biweekly'?'block':'none';
+  document.getElementById('monthly-opts').style.display  = val==='monthly' ?'block':'none';
+}
+
+function setDayBtn(dow){
+  document.getElementById('p-day').value = dow;
+  for(let i=0;i<7;i++) document.getElementById('db-'+i).classList.toggle('active', i===dow);
+}
+
+function setWeekVar(v){
+  document.getElementById('p-weekvar').value = v;
+  ['A','B'].forEach(x=> document.getElementById('wv-'+x).classList.toggle('active', x===v));
+}
+
+function setMonthOcc(n){
+  document.getElementById('p-monthocc').value = n;
+  [1,2,3,4].forEach(x=> document.getElementById('mo-'+x).classList.toggle('active', x===n));
+}
+
+function toggleProfileWork(el){
+  const track = el.querySelector('.work-toggle-track');
+  track.classList.toggle('on');
+  el.classList.toggle('on');
+}
+
+function getProfileWork(){
+  return [...document.querySelectorAll('#profile-work-toggles .work-toggle')]
+    .filter(el=>el.querySelector('.work-toggle-track').classList.contains('on'))
+    .map(el=>el.dataset.work);
+}
+
+function setProfileWork(arr){
+  document.querySelectorAll('#profile-work-toggles .work-toggle').forEach(el=>{
+    const on = arr && arr.includes(el.dataset.work);
+    el.querySelector('.work-toggle-track').classList.toggle('on', on);
+    el.classList.toggle('on', on);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
 //  PAGE 1 — ROUTE
 // ─────────────────────────────────────────────────────────────
 function renderRoute(){
@@ -1472,6 +1663,7 @@ function renderRoute(){
         <div class="pool-meta">
           <div class="pool-name">${pool.name}${pool.isSWG?` <span class="badge b-teal" style="font-size:9px;">SWG</span>`:''} ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}</div>
           <div class="pool-owner">${pool.ownerName||'—'} · ${pool.phone||'—'}</div>
+          ${nextDueHtml(pool)}
         </div>
         <div class="pool-right">
           ${doneToday
@@ -1537,8 +1729,14 @@ function openService(poolId){
   ['s-fc','s-tc','s-cc','s-ph','s-ta','s-ch','s-cya','s-salt','s-temp','s-notes','s-cl-add','s-acid-add'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.value='';
   });
-  document.querySelectorAll('#work-chips input').forEach(cb=>cb.checked=false);
-  document.querySelectorAll('#work-chips .work-chip').forEach(c=>c.classList.remove('selected'));
+  // Pre-populate work chips from pool profile defaults
+  const dw = pool.defaultWork || [];
+  document.querySelectorAll('#work-chips .work-chip').forEach(c=>{
+    const val = c.querySelector('input').value;
+    const on  = dw.includes(val);
+    c.querySelector('input').checked = on;
+    c.classList.toggle('selected', on);
+  });
   document.getElementById('dose-panel').innerHTML='';
   document.getElementById('svc-msg').style.display='none';
   openSheet('service-sheet');
@@ -1551,8 +1749,14 @@ function openQuickLog(poolId){
   document.getElementById('ql-notes').value='';
   otoSelected=null;
   document.querySelectorAll('#oto-selector .oto-btn').forEach(b=>b.className='oto-btn');
-  document.querySelectorAll('#ql-work-chips input').forEach(cb=>cb.checked=false);
-  document.querySelectorAll('#ql-work-chips .work-chip').forEach(c=>c.classList.remove('selected'));
+  // Pre-populate quick log work chips from pool profile defaults
+  const qdw = pool.defaultWork || [];
+  document.querySelectorAll('#ql-work-chips .work-chip').forEach(c=>{
+    const val = c.querySelector('input').value;
+    const on  = qdw.includes(val);
+    c.querySelector('input').checked = on;
+    c.classList.toggle('selected', on);
+  });
   openSheet('quick-sheet');
 }
 
@@ -1629,43 +1833,21 @@ async function submitService(){
   if(emailCfg.pubKey&&emailCfg.svcId&&pool.email){
     const btn=document.getElementById('svc-btn');
     btn.innerHTML='<span class="spinner"></span> Sending...';btn.disabled=true;
-    const clientBody=buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,false);
-    const myBody=buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,true);
-    const sends=[];
-    // Email 1 — to pool owner
-    // Variable names match exactly what is in your EmailJS template fields:
-    // {{email}} = To Email field, {{email_body}} = Content body
-    sends.push(emailjs.send(emailCfg.svcId,emailCfg.tplId,{
-      email:pool.email,
-      to_email:pool.email,
-      to_name:pool.ownerName,
-      pool_name:pool.name,
-      address:pool.address,
-      service_date:log.date,
-      status:fcStatus,
-      email_body:clientBody,
-      biz_name:settings.bizName||'Pool Service',
-      owner_email:emailCfg.myEmail||''
-    }));
-    // Email 2 — copy to you as a separate send (fallback if BCC not set in template)
-    if(emailCfg.myEmail){
-      sends.push(emailjs.send(emailCfg.svcId,emailCfg.tplId,{
-        email:emailCfg.myEmail,
-        to_email:emailCfg.myEmail,
-        to_name:settings.bizName||'Me (copy)',
+    const clientBody=buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs);
+    try{
+      // Single send — your copy comes via BCC set in your EmailJS template
+      await emailjs.send(emailCfg.svcId,emailCfg.tplId,{
+        email:pool.email,
+        to_email:pool.email,
+        to_name:pool.ownerName,
         pool_name:pool.name,
         address:pool.address,
         service_date:log.date,
         status:fcStatus,
-        email_body:myBody,
-        biz_name:settings.bizName||'Pool Service',
-        owner_email:emailCfg.myEmail||''
-      }));
-    }
-    try{
-      await Promise.all(sends);
-      const ccNote=emailCfg.myEmail?' + copy to you':'';
-      showMsg('svc-msg','✅ Email sent to '+pool.ownerName+ccNote,'g');
+        email_body:clientBody,
+        biz_name:settings.bizName||'Pool Service'
+      });
+      showMsg('svc-msg','✅ Email sent to '+pool.ownerName,'g');
       btn.innerHTML='Submit & Email Client';btn.disabled=false;
       setTimeout(()=>{closeSheet('service-sheet');renderRoute();renderDashboard();updateBadge();},1800);
     }catch(err){
@@ -1681,13 +1863,12 @@ async function submitService(){
   }
 }
 
-function buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,isCopy=false){
+function buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs){
   const {fc,tc,cc,ph,ta,ch,cya,salt,temp,work,notes,clAdded,acidAdded}=log;
   const workDone=work&&work.length?work.join(', '):'Routine service';
   const clNote=clAdded>0?`${clAdded} oz added`:clDose>0?`${clDose} oz recommended`:'None needed';
   const acidNote=acidAdded>0?`${acidAdded} oz added`:acidDose>0?`${acidDose} oz recommended`:'None needed';
-  const greeting=isCopy?`COPY — Service report for ${pool.name} (${pool.ownerName}, ${pool.address})`:`Dear ${pool.ownerName}`;
-  return`${greeting},
+  return`Dear ${pool.ownerName},
 
 Your pool was serviced on ${log.date}.
 
@@ -1776,7 +1957,7 @@ function showHistory(poolId){
 // ─────────────────────────────────────────────────────────────
 function setSort(m){
   sortMode=m;
-  ['date','status','freq'].forEach(s=>document.getElementById('sb-'+s).classList.toggle('active',s===m));
+  ['date','status'].forEach(s=>{const el=document.getElementById('sb-'+s);if(el)el.classList.toggle('active',s===m);});
   renderDashboard();
 }
 function setFreq(f){
@@ -1790,7 +1971,7 @@ function renderDashboard(){
   let filtered=pools.filter(p=>freqFilter==='all'||p.frequency===freqFilter);
   if(sortMode==='date')filtered.sort((a,b)=>{const la=getLL(a.id),lb=getLL(b.id);return(la?.date||'0').localeCompare(lb?.date||'0');});
   else if(sortMode==='status')filtered.sort((a,b)=>sOrder[poolStatus(a.id)]-sOrder[poolStatus(b.id)]);
-  else{const fo={weekly:0,biweekly:1,monthly:2};filtered.sort((a,b)=>(fo[a.frequency]||0)-(fo[b.frequency]||0));}
+  // freq sort removed — use filter tabs instead
   const fLabel={weekly:'W',biweekly:'B',monthly:'M'};
   document.getElementById('dash-list').innerHTML=filtered.length?filtered.map(pool=>{
     const last=getLL(pool.id);const s=poolStatus(pool.id);const trend=getTrend(pool.id,'fc');
@@ -1835,7 +2016,8 @@ function calNav(dir){
   else{calDate=new Date(calDate);calDate.setDate(calDate.getDate()+dir*7);}
   renderCalendar();
 }
-function getPoolsForDOW(dow){return pools.filter(p=>p.serviceDays&&p.serviceDays.includes(String(dow)));}
+function getPoolsForDate(dateStr){return pools.filter(p=>isPoolScheduledOn(p,dateStr));}
+function getPoolsForDOW(dow){return[];}
 function renderCalendar(){calView==='month'?renderMonth():renderWeek();}
 function renderMonth(){
   const y=calDate.getFullYear(),m=calDate.getMonth();
@@ -1844,8 +2026,8 @@ function renderMonth(){
   const today=new Date().toISOString().split('T')[0];
   let h=`<div class="cal-grid">`;
   ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d=>h+=`<div class="cal-dn">${d}</div>`);
-  for(let i=0;i<first;i++){const d=new Date(y,m,i-first+1);const ps=getPoolsForDOW(d.getDay());h+=`<div class="cal-day other-m" onclick="showDayDetail('${d.toISOString().split('T')[0]}')"><div class="cal-day-n">${d.getDate()}</div>${ps.length?`<div class="cal-dot"></div><div class="cal-cnt">${ps.length}</div>`:''}</div>`;}
-  for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const ps=getPoolsForDOW(new Date(ds+'T00:00:00').getDay());const isT=ds===today;h+=`<div class="cal-day ${isT?'today':''}" onclick="showDayDetail('${ds}')"><div class="cal-day-n">${d}</div>${ps.length?`<div class="cal-dot"></div><div class="cal-cnt">${ps.length}</div>`:''}</div>`;}
+  for(let i=0;i<first;i++){const d=new Date(y,m,i-first+1);const ds2=d.toISOString().split('T')[0];const ps=getPoolsForDate(ds2);h+=`<div class="cal-day other-m" onclick="showDayDetail('${ds2}')"><div class="cal-day-n">${d.getDate()}</div>${ps.length?`<div class="cal-dot"></div><div class="cal-cnt">${ps.length}</div>`:''}</div>`;}
+  for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const ps=getPoolsForDate(ds);const isT=ds===today;h+=`<div class="cal-day ${isT?'today':''}" onclick="showDayDetail('${ds}')"><div class="cal-day-n">${d}</div>${ps.length?`<div class="cal-dot"></div><div class="cal-cnt">${ps.length}</div>`:''}</div>`;}
   h+='</div>';document.getElementById('cal-container').innerHTML=h;
 }
 function renderWeek(){
@@ -1855,7 +2037,7 @@ function renderWeek(){
   let h='';
   for(let i=0;i<7;i++){
     const d=new Date(start.getTime()+i*86400000);
-    const ps=getPoolsForDOW(d.getDay());
+    const dstr=d.toISOString().split('T')[0];const ps=getPoolsForDate(dstr);
     h+=`<div class="week-row"><div class="week-day-lbl">${days[i]} · ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
       ${ps.length?ps.map(p=>`<span class="wchip ${p.isSWG?'swg':''}">${p.name}</span>`).join(''):`<span style="font-size:12px;color:var(--hint);">No pools</span>`}
     </div>`;
@@ -1863,7 +2045,7 @@ function renderWeek(){
   document.getElementById('cal-container').innerHTML=h;
 }
 function showDayDetail(ds){
-  const ps=getPoolsForDOW(new Date(ds+'T00:00:00').getDay());
+  const ps=getPoolsForDate(ds);
   document.getElementById('cal-detail-lbl').textContent=new Date(ds+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
   document.getElementById('cal-detail-pools').innerHTML=ps.length?ps.map(p=>{
     const l=logs.filter(x=>x.poolId===p.id&&x.date===ds)[0];
@@ -1963,7 +2145,11 @@ function openAddPool(){
   document.getElementById('p-swg-brand').value='pentair';
   swgOn=false;document.getElementById('swg-toggle').classList.remove('on');
   document.getElementById('swg-fields').style.display='none';
-  document.querySelectorAll('#day-picker input').forEach(cb=>cb.checked=false);
+  // Reset schedule
+  setFreqBtn('weekly'); setWeekVar('A'); setMonthOcc(1);
+  document.getElementById('p-day').value='';
+  for(let i=0;i<7;i++) document.getElementById('db-'+i).classList.remove('active');
+  setProfileWork([]);
   document.getElementById('pool-del-wrap').style.display='none';
   openSheet('pool-sheet');
 }
@@ -1988,7 +2174,13 @@ function editPool(idx){
   document.getElementById('swg-fields').style.display=swgOn?'block':'none';
   document.getElementById('p-salt').value=p.saltTarget||3200;
   document.getElementById('p-swg-brand').value=p.swgBrand||'pentair';
-  document.querySelectorAll('#day-picker input').forEach(cb=>cb.checked=p.serviceDays&&p.serviceDays.includes(cb.value));
+  // Load schedule
+  setFreqBtn(p.frequency||'weekly');
+  if(p.schedDay!=null) setDayBtn(p.schedDay);
+  else { document.getElementById('p-day').value=''; for(let i=0;i<7;i++) document.getElementById('db-'+i).classList.remove('active'); }
+  setWeekVar(p.schedWeekVar||'A');
+  setMonthOcc(p.schedMonthOcc||1);
+  setProfileWork(p.defaultWork||[]);
   document.getElementById('pool-del-wrap').style.display='block';
   openSheet('pool-sheet');
 }
@@ -1999,12 +2191,15 @@ function toggleSWG(){
   if(swgOn&&!document.getElementById('p-salt').value) document.getElementById('p-salt').value=3200;
 }
 function savePool(){
-  const days=[...document.querySelectorAll('#day-picker input:checked')].map(cb=>cb.value);
   const idxEl=document.getElementById('edit-pool-idx').value;
+  const schedDayRaw=document.getElementById('p-day').value;
   const pool={
     id:idxEl!==''?pools[parseInt(idxEl)].id:'pool_'+Date.now(),
     name:document.getElementById('p-name').value.trim(),
     frequency:document.getElementById('p-freq').value,
+    schedDay:schedDayRaw!==''?parseInt(schedDayRaw):null,
+    schedWeekVar:document.getElementById('p-weekvar').value,
+    schedMonthOcc:parseInt(document.getElementById('p-monthocc').value)||1,
     address:document.getElementById('p-addr').value.trim(),
     ownerName:document.getElementById('p-owner').value.trim(),
     phone:document.getElementById('p-phone').value.trim(),
@@ -2018,7 +2213,7 @@ function savePool(){
     saltTarget:parseFloat(document.getElementById('p-salt').value)||3200,
     swgBrand:document.getElementById('p-swg-brand').value,
     notes:document.getElementById('p-notes').value.trim(),
-    serviceDays:days
+    defaultWork:getProfileWork()
   };
   if(!pool.name)return;
   if(idxEl!=='')pools[parseInt(idxEl)]=pool;else pools.push(pool);
@@ -2033,7 +2228,7 @@ function deletePool(){
 //  SETTINGS
 // ─────────────────────────────────────────────────────────────
 function saveEmail(){
-  emailCfg={svcId:document.getElementById('ejs-svc').value.trim(),tplId:document.getElementById('ejs-tpl').value.trim(),pubKey:document.getElementById('ejs-key').value.trim(),myEmail:document.getElementById('ejs-myemail').value.trim()};
+  emailCfg={svcId:document.getElementById('ejs-svc').value.trim(),tplId:document.getElementById('ejs-tpl').value.trim(),pubKey:document.getElementById('ejs-key').value.trim()};
   settings.bizName=document.getElementById('biz-name').value.trim()||'Pool Service';
   S.set('email',emailCfg);S.set('settings',settings);
   if(emailCfg.pubKey)try{emailjs.init({publicKey:emailCfg.pubKey});}catch{}
@@ -2043,29 +2238,29 @@ async function sendTestEmail(){
   if(!emailCfg.pubKey||!emailCfg.svcId||!emailCfg.tplId){
     showMsg('email-msg','❌ Fill in and save all 3 keys first','r');return;
   }
-  if(!emailCfg.myEmail){
-    showMsg('email-msg','❌ Enter Your Email address first','r');return;
-  }
+  const testAddr=prompt('Enter email address to send the test to:');
+  if(!testAddr||!testAddr.includes('@')){showMsg('email-msg','❌ No valid email entered','r');return;}
   showMsg('email-msg','📨 Sending test...','g');
   try{
     await emailjs.send(emailCfg.svcId,emailCfg.tplId,{
-      email:emailCfg.myEmail,
-      to_email:emailCfg.myEmail,
-      to_name:'PoolPro Test',
+      email:testAddr,
+      to_email:testAddr,
+      to_name:'akaPoolCO Test',
       pool_name:'Test Pool',
       address:'123 Test St',
       service_date:new Date().toISOString().split('T')[0],
       status:'OK',
       email_body:`This is a test email from akaPoolCO Pool Services.
 
-If you received this, your email setup is working correctly!
+If you received this, your EmailJS setup is working correctly!
 
 Service ID: ${emailCfg.svcId}
-Template ID: ${emailCfg.tplId}`,
-      biz_name:settings.bizName||'Pool Service',
-      owner_email:emailCfg.myEmail
+Template ID: ${emailCfg.tplId}
+
+Your BCC copy (if set in EmailJS template) will arrive at your BCC address.`,
+      biz_name:settings.bizName||'akaPoolCO Pool Services'
     });
-    showMsg('email-msg','✅ Test email sent to '+emailCfg.myEmail+' — check inbox!','g');
+    showMsg('email-msg','✅ Test sent to '+testAddr+' — check inbox & BCC address!','g');
   }catch(err){
     const errText=err.text||err.message||JSON.stringify(err);
     showMsg('email-msg','❌ Failed: '+errText,'r');
@@ -2076,7 +2271,6 @@ function loadEmailFields(){
   document.getElementById('ejs-svc').value=emailCfg.svcId||'';
   document.getElementById('ejs-tpl').value=emailCfg.tplId||'';
   document.getElementById('ejs-key').value=emailCfg.pubKey||'';
-  document.getElementById('ejs-myemail').value=emailCfg.myEmail||'';
   document.getElementById('biz-name').value=settings.bizName||'';
 }
 function saveDefaults(){
