@@ -518,6 +518,10 @@ a{color:var(--accent);}
     <button class="btn btn-primary btn-full" onclick="unlock()" style="margin-top:6px;">Unlock</button>
     <div id="lock-err" style="color:var(--red);font-size:12px;margin-top:8px;display:none;">Incorrect PIN</div>
     <div id="lock-hint" style="font-size:11px;color:var(--hint);margin-top:18px;"></div>
+    <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--hint);margin-bottom:10px;">Locked out? Reset everything to PIN 1234:</div>
+      <button class="btn btn-ghost btn-full" onclick="hardReset()" style="font-size:12px;color:var(--muted);">🔄 Reset App &amp; PIN to 1234</button>
+    </div>
   </div>
 </div>
 
@@ -1039,6 +1043,17 @@ function unlock(){
   } else {
     document.getElementById('lock-err').style.display='block';
     document.getElementById('lock-pin').value='';
+  }
+}
+
+function hardReset(){
+  if(confirm('This will reset your PIN to 1234 and clear ALL saved data (pools, logs, settings). Continue?')){
+    // Wipe every akav1_ key from localStorage
+    Object.keys(localStorage).filter(k=>k.startsWith('akav1_')).forEach(k=>localStorage.removeItem(k));
+    // Also wipe old pp3_ keys in case they were causing the issue
+    Object.keys(localStorage).filter(k=>k.startsWith('pp3_')||k.startsWith('pp_')).forEach(k=>localStorage.removeItem(k));
+    alert('Done! PIN is now 1234. Reloading...');
+    location.reload();
   }
 }
 
