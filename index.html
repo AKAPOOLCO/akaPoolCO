@@ -72,6 +72,30 @@ button{cursor:pointer;}
 a{color:var(--accent);}
 
 /* ─────────────────────────────────────────
+   SOP STYLES
+───────────────────────────────────────── */
+.sop-section{border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden;}
+.sop-toggle{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;background:var(--surface2);user-select:none;-webkit-user-select:none;}
+.sop-toggle:active{background:var(--surface3);}
+.sop-toggle-title{font-size:13px;font-weight:700;color:var(--text);}
+.sop-toggle-arrow{font-size:12px;color:var(--muted);transition:transform .2s;flex-shrink:0;}
+.sop-toggle-arrow.open{transform:rotate(180deg);}
+.sop-body{display:none;padding:12px 13px;background:var(--surface);border-top:1px solid var(--border);}
+.sop-body.open{display:block;}
+.sop-p{font-size:12.5px;color:var(--text);line-height:1.65;margin-bottom:10px;}
+.sop-p:last-child{margin-bottom:0;}
+.sop-label{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;margin-top:10px;}
+.sop-item{display:flex;gap:8px;font-size:12.5px;color:var(--text);line-height:1.6;margin-bottom:5px;}
+.sop-bullet{color:var(--accent);font-weight:800;flex-shrink:0;}
+.sop-formula{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;margin:10px 0;text-align:center;}
+.sop-formula-main{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--text);letter-spacing:1px;}
+.sop-formula-sub{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5;}
+.sop-chip{display:inline-block;background:var(--blue-lt);border:1px solid var(--blue-bd);color:var(--blue);font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;font-family:var(--mono);}
+.sop-chip-red{background:var(--red-lt);border-color:var(--red-bd);color:var(--red);}
+.sop-chip-green{background:var(--green-lt);border-color:var(--green-bd);color:var(--green);}
+.sop-divider{height:1px;background:var(--border);margin:10px 0;}
+
+/* ─────────────────────────────────────────
    SEASON TOGGLE
 ───────────────────────────────────────── */
 .season-btns{display:flex;gap:0;border-radius:var(--r);overflow:hidden;border:1.5px solid var(--border);width:100%;}
@@ -707,6 +731,76 @@ a{color:var(--accent);}
         <button class="btn btn-ghost btn-full" onclick="document.getElementById('import-file').click()">📥 Import JSON</button>
         <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(event)">
       </div>
+      <div class="setting-card">
+        <div class="setting-head">📋 Standard Operating Procedure</div>
+
+        <!-- Section 1: Daily Route -->
+        <div class="sop-section">
+          <div class="sop-toggle" onclick="sopToggle(this)">
+            <span class="sop-toggle-title">1 · Daily Route Operations</span>
+            <span class="sop-toggle-arrow">▼</span>
+          </div>
+          <div class="sop-body">
+            <div class="sop-label">Beginning the day</div>
+            <div class="sop-p">Open the Route tab. Pools scheduled for today are listed. Drag using the ☰ icon to match your driving order.</div>
+            <div class="sop-divider"></div>
+            <div class="sop-label">⚡ Quick Visit — maintenance only</div>
+            <div class="sop-p">For mid-week checks or bi-weekly stops. Tap ⚡ Quick.</div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Empty skimmer, brush, OTO chlorine presence test.</span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Logs the visit and proves presence. Does <em>not</em> alter the pool's chemical baseline data.</span></div>
+            <div class="sop-divider"></div>
+            <div class="sop-label">🧪 Full Log — chemical workup</div>
+            <div class="sop-p">Tap 🧪 Full Log. Perform a Taylor K-2006-SALT titration test.</div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Input exact readings. App calculates CSI and dosing in oz/lbs based on pool volume and SWG status.</span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Check work boxes. Tap <strong>Submit &amp; Email Client</strong>.</span></div>
+          </div>
+        </div>
+
+        <!-- Section 2: Chemistry Targets -->
+        <div class="sop-section">
+          <div class="sop-toggle" onclick="sopToggle(this)">
+            <span class="sop-toggle-title">2 · Chemistry Targets (TFP Standards)</span>
+            <span class="sop-toggle-arrow">▼</span>
+          </div>
+          <div class="sop-body">
+            <div class="sop-p">Targets are set per pool in the Pool Profile — never globally — to account for equipment and environment differences.</div>
+            <div class="sop-label">Traditional liquid chlorine pools</div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>CYA Target: <span class="sop-chip">40 ppm</span></span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>FC Target: <span class="sop-chip">6.0 ppm</span> (~15% of CYA for Granite Bay summer heat)</span></div>
+            <div class="sop-divider"></div>
+            <div class="sop-label">Saltwater generator (SWG) pools</div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>CYA Target: <span class="sop-chip">70 ppm</span> — protects SWG cell from overworking</span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Salt Target: <span class="sop-chip">3200 ppm</span> — standard for Pentair/Hayward</span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Liquid chlorine dosing is suppressed for SWG pools unless FC drops below <span class="sop-chip sop-chip-red">2.0 ppm</span></span></div>
+          </div>
+        </div>
+
+        <!-- Section 3: Z-Score -->
+        <div class="sop-section">
+          <div class="sop-toggle" onclick="sopToggle(this)">
+            <span class="sop-toggle-title">3 · Predictive Engine — Z-Score Logic</span>
+            <span class="sop-toggle-arrow">▼</span>
+          </div>
+          <div class="sop-body">
+            <div class="sop-p">Every pool has a unique "appetite" for chlorine based on its size, sun exposure, and vegetation. Instead of reacting to low chlorine, akaPoolCO tracks each pool's exact <strong>Chlorine Demand Rate</strong> in ppm/day.</div>
+            <div class="sop-label">How the math works</div>
+            <div class="sop-p">The app calculates each pool's historical average demand (mean μ) and natural fluctuation (standard deviation σ). On each new test a Z-score is computed:</div>
+            <div class="sop-formula">
+              <div class="sop-formula-main">Z = (X − μ) / σ</div>
+              <div class="sop-formula-sub">X = today's demand rate · μ = pool's historical average · σ = standard deviation</div>
+            </div>
+            <div class="sop-label">What the alert means</div>
+            <div class="sop-p">A <span class="sop-chip sop-chip-red">⚠️ High Demand</span> badge appears when <span class="sop-chip">Z &gt; 2.0</span> — meaning the pool is consuming chlorine at a rate statistically far beyond its normal behavior. Two likely causes:</div>
+            <div class="sop-item"><span class="sop-bullet">1</span><span><strong>Organic contamination</strong> — an algae bloom is forming invisibly, or high organic load from bathers, fertilizer runoff, or debris.</span></div>
+            <div class="sop-item"><span class="sop-bullet">2</span><span><strong>Equipment failure</strong> — the SWG cell is calcifying or failing and no longer producing its baseline chlorine.</span></div>
+            <div class="sop-p" style="margin-top:10px;padding:10px;background:var(--green-lt);border-radius:8px;border:1px solid var(--green-bd);color:var(--green);">Statistical tracking catches unseen problems weeks before water turns cloudy or a salt cell burns out.</div>
+            <div class="sop-label">Minimum data required</div>
+            <div class="sop-p">Z-score activates after <span class="sop-chip">4 full FAS-DPD logs</span> per pool. The app shows a countdown in the dosing panel on each visit until the baseline is established.</div>
+          </div>
+        </div>
+
+      </div>
+
       <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v2 · localStorage only</div>
     </div>
 
@@ -2363,6 +2457,17 @@ function importData(e){
     }catch{alert('❌ Invalid JSON');}
   };
   fr.readAsText(e.target.files[0]);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SOP TOGGLE
+// ─────────────────────────────────────────────────────────────
+function sopToggle(headerEl){
+  const body  = headerEl.nextElementSibling;
+  const arrow = headerEl.querySelector('.sop-toggle-arrow');
+  const open  = body.classList.contains('open');
+  body.classList.toggle('open', !open);
+  arrow.classList.toggle('open', !open);
 }
 
 // ─────────────────────────────────────────────────────────────
