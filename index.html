@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1923">
-<title>akaPoolCO Pool Services v2</title>
+<title>akaPoolCO Pool Services</title>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ─────────────────────────────────────────
@@ -801,7 +801,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v2 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v3 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1058,8 +1058,19 @@ a{color:var(--accent);}
   </div>
 
   <div class="form-group mt12" style="margin-top:10px;">
-    <label class="form-label">Notes / Observations</label>
+    <label class="form-label">Notes / Observations <span style="font-weight:400;color:var(--hint);">(saved internally)</span></label>
     <textarea class="form-textarea" id="s-notes" placeholder="Equipment issues, follow-up needed..."></textarea>
+  </div>
+
+  <!-- NOTES TOGGLE — controls whether notes appear in the client email -->
+  <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:var(--r);padding:10px 13px;margin-bottom:10px;">
+    <div>
+      <div style="font-size:13px;font-weight:700;">Include notes in client report</div>
+      <div style="font-size:11px;color:var(--muted);">Off by default — turn on to share notes with client</div>
+    </div>
+    <div class="toggle-track" id="notes-toggle" onclick="toggleNotesReport()">
+      <div class="toggle-thumb"></div>
+    </div>
   </div>
 
   <div class="form-row">
@@ -1194,8 +1205,8 @@ a{color:var(--accent);}
 //  STORAGE
 // ─────────────────────────────────────────────────────────────
 const S={
-  get:k=>{try{return JSON.parse(localStorage.getItem('akav2_'+k));}catch{return null;}},
-  set:(k,v)=>localStorage.setItem('akav2_'+k,JSON.stringify(v))
+  get:k=>{try{return JSON.parse(localStorage.getItem('akav3_'+k));}catch{return null;}},
+  set:(k,v)=>localStorage.setItem('akav3_'+k,JSON.stringify(v))
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -1210,8 +1221,9 @@ let sortMode    = 'date';
 let freqFilter  = 'all';
 let calView     = 'month';
 let calDate     = new Date();
-let swgOn       = false;   // pool form toggle
-let otoSelected = null;    // quick log oto
+let swgOn         = false;  // pool form toggle
+let otoSelected   = null;   // quick log oto
+let notesInReport = false;  // whether notes appear in client email
 
 // ─────────────────────────────────────────────────────────────
 //  AUTH
@@ -1231,7 +1243,7 @@ function unlock(){
 function hardReset(){
   if(confirm('This will reset your PIN to 1234 and clear ALL saved data (pools, logs, settings). Continue?')){
     // Wipe every akav1_ key from localStorage
-    Object.keys(localStorage).filter(k=>k.startsWith('akav2_')).forEach(k=>localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k=>k.startsWith('akav3_')).forEach(k=>localStorage.removeItem(k));
     // Also wipe old pp3_ keys in case they were causing the issue
     Object.keys(localStorage).filter(k=>k.startsWith('pp3_')||k.startsWith('pp_')).forEach(k=>localStorage.removeItem(k));
     alert('Done! PIN is now 1234. Reloading...');
@@ -1840,6 +1852,9 @@ function openService(poolId){
   });
   document.getElementById('dose-panel').innerHTML='';
   document.getElementById('svc-msg').style.display='none';
+  // Always default notes toggle to OFF for each new service
+  notesInReport=false;
+  document.getElementById('notes-toggle').classList.remove('on');
   openSheet('service-sheet');
 }
 
@@ -1934,7 +1949,7 @@ async function submitService(){
   if(emailCfg.pubKey&&emailCfg.svcId&&pool.email){
     const btn=document.getElementById('svc-btn');
     btn.innerHTML='<span class="spinner"></span> Sending...';btn.disabled=true;
-    const clientBody=buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs);
+    const clientBody=buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,notesInReport);
     try{
       // Single send — your copy comes via BCC set in your EmailJS template
       await emailjs.send(emailCfg.svcId,emailCfg.tplId,{
@@ -1964,47 +1979,177 @@ async function submitService(){
   }
 }
 
-function buildEmailBody(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs){
+function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,includeNotes){
   const {fc,tc,cc,ph,ta,ch,cya,salt,temp,work,notes,clAdded,acidAdded}=log;
-  const workDone=work&&work.length?work.join(', '):'Routine service';
-  const clNote=clAdded>0?`${clAdded} oz added`:clDose>0?`${clDose} oz recommended`:'None needed';
-  const acidNote=acidAdded>0?`${acidAdded} oz added`:acidDose>0?`${acidDose} oz recommended`:'None needed';
-  return`Dear ${pool.ownerName},
 
-Your pool was serviced on ${log.date}.
+  // ── Chemistry cards ──
+  const chemCards=[
+    {lbl:'Free Chlorine',val:fc??'—',unit:'ppm',target:pool.targetFC||6},
+    {lbl:'pH Level',     val:ph??'—',unit:'',   target:pool.targetPH||7.4},
+    {lbl:'Alkalinity',   val:ta??'—',unit:'ppm',target:null},
+    {lbl:'Calcium',      val:ch??'—',unit:'ppm',target:null},
+    {lbl:'Stabilizer',   val:cya??'—',unit:'ppm',target:pool.targetCYA||70},
+    {lbl:'Salt Level',   val:salt??'—',unit:'ppm',target:pool.isSWG?(pool.saltTarget||3200):null}
+  ];
 
-TEST RESULTS (Taylor K-2006-SALT)
-─────────────────────────────
-Free Chlorine (FC):     ${fc??'—'} ppm  [target: ${pool.targetFC||6}]
-Total Chlorine (TC):    ${tc??'—'} ppm
-Combined Chlorine (CC): ${cc??'—'} ppm
-pH:                     ${ph??'—'}      [target: ${pool.targetPH||7.4}]
-Total Alkalinity:       ${ta??'—'} ppm
-Calcium Hardness:       ${ch??'—'} ppm
-CYA (Stabilizer):       ${cya??'—'} ppm
-Salt:                   ${salt??'—'} ppm
-Temperature:            ${temp??'—'} °F
+  // ── CSI status colours ──
+  const csiNum=csi!==null?(csi>0?'+':'')+csi:'N/A';
+  const csiColor=csi===null?'#64748b':Math.abs(csi)<=0.3?'#16a34a':Math.abs(csi)<=0.6?'#b45309':'#dc2626';
+  const csiBg  =csi===null?'#f8fafc':Math.abs(csi)<=0.3?'#f0fdf4':Math.abs(csi)<=0.6?'#fffbeb':'#fff1f2';
+  const csiBdr =csi===null?'#e2e8f0':Math.abs(csi)<=0.3?'#bbf7d0':Math.abs(csi)<=0.6?'#fde68a':'#fecaca';
 
-WATER BALANCE
-─────────────────────────────
-FC Status:  ${fcStatus}
-CSI Index:  ${csi!==null?(csi>0?'+':'')+csi:'—'}  (${cs.text})
-  -0.3 to +0.3 = balanced
+  // ── FC status badge ──
+  const fcColors={OK:['#16a34a','#f0fdf4','#bbf7d0'],LOW:['#b45309','#fffbeb','#fde68a'],
+    CRITICAL:['#dc2626','#fff1f2','#fecaca'],HIGH:['#0369a1','#eff6ff','#bfdbfe']};
+  const [fcTxt,fcBg,fcBdr]=fcColors[fcStatus]||fcColors.OK;
 
-CHEMICALS
-─────────────────────────────
-Chlorine:       ${clNote}
-Muriatic Acid:  ${acidNote}
-${saltDose>0?`Salt:           ${saltDose} lbs recommended\n`:''}${cyaDose>0?`CYA:            ${cyaDose} lbs recommended\n`:''}
-WORK PERFORMED
-─────────────────────────────
-${workDone}
+  // ── Demand analytics ──
+  const demand=getDemandAnalysis(pool.id);
+  const latestRate=getLatestDemandRate(pool.id);
+  let demandHtml='';
+  if(latestRate!==null){
+    const anomaly=demand&&demand.anomaly;
+    const demBg=anomaly?'#fff1f2':'#fffbeb';
+    const demBdr=anomaly?'#fecaca':'#fde68a';
+    const demTitle=anomaly?'⚠️ High Demand Alert':'📊 Chlorine Demand Analytics';
+    const demColor=anomaly?'#dc2626':'#92400e';
+    let demText=`Your pool is currently consuming <strong>${latestRate.rate} ppm</strong> of chlorine per day.`;
+    if(demand){
+      demText+=` Historical average: ${demand.mean} ppm/day. Z-Score: ${demand.zscore>0?'+':''}${demand.zscore}.`;
+      demText+=anomaly
+        ?` <strong style="color:#dc2626;">Demand is ${demand.zscore}σ above normal — inspect for algae or SWG cell issue.</strong>`
+        :` Sanitation efficiency is <strong>Optimal</strong>.`;
+    } else {
+      const remaining=4-(getDemandRates(pool.id).length);
+      demText+=` (${remaining} more full log${remaining===1?'':'s'} needed to activate anomaly detection)`;
+    }
+    demandHtml=`
+      <tr><td style="padding:0 0 24px;">
+        <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">
+          Predictive Intelligence Insights
+        </div>
+        <div style="background:${demBg};border:1px solid ${demBdr};border-radius:10px;padding:14px 16px;">
+          <div style="font-size:11px;font-weight:700;color:${demColor};margin-bottom:6px;">${demTitle}</div>
+          <div style="font-size:13px;color:#374151;line-height:1.6;">${demText}</div>
+        </div>
+      </td></tr>`;
+  }
 
-NOTES
-─────────────────────────────
-${notes||'None'}
+  // ── Work performed chips ──
+  const workLabels={skimmer:'Skimmer','test-only':'Test Only',leaves:'Leaves',brush:'Brush',
+    filter:'Filter',vacuum:'Vacuum',backwash:'Backwash',shock:'Shocked Pool',algae:'Algae Treatment'};
+  const workChips=work&&work.length
+    ? work.map(w=>`<span style="display:inline-block;background:#eef2f7;border-radius:16px;padding:5px 12px;font-size:11px;color:#475569;font-weight:600;margin:3px;">✓ ${workLabels[w]||w}</span>`).join('')
+    : '<span style="font-size:13px;color:#64748b;">Routine service</span>';
 
-${settings.bizName||'Pool Service'}`;
+  // ── Chemicals row ──
+  const clNote=clAdded>0?`${clAdded} oz added`:clDose>0?`${clDose} oz rec.`:'None needed';
+  const acidNote=acidAdded>0?`${acidAdded} oz added`:acidDose>0?`${acidDose} oz rec.`:'None needed';
+  let chemsText=`Chlorine: ${clNote} &nbsp;·&nbsp; Muriatic Acid: ${acidNote}`;
+  if(saltDose>0) chemsText+=` &nbsp;·&nbsp; Salt: ${saltDose} lbs rec.`;
+  if(cyaDose>0)  chemsText+=` &nbsp;·&nbsp; CYA: ${cyaDose} lbs rec.`;
+
+  // ── Notes section (only if toggled on) ──
+  const notesSection=includeNotes&&notes
+    ?`<tr><td style="padding:0 0 24px;">
+        <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Technician Notes</div>
+        <div style="background:#fdfdfd;border:1px dashed #cbd5e1;border-radius:10px;padding:16px 18px;font-style:italic;color:#64748b;font-size:13px;line-height:1.65;">"${notes}"</div>
+      </td></tr>`
+    :'';
+
+  const serviceDate=new Date(log.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f7ff;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;padding:30px 20px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+
+  <!-- HEADER -->
+  <tr><td style="background:#ffffff;text-align:center;padding:32px 30px 24px;border-bottom:3px solid #4a90e2;">
+    <div style="font-size:32px;font-weight:900;color:#4a90e2;letter-spacing:-1px;margin-bottom:4px;">${settings.bizName||'akaPoolCO'}</div>
+    <div style="font-size:14px;color:#94a3b8;font-weight:500;">Your Neighborhood Pool Services</div>
+  </td></tr>
+
+  <!-- META -->
+  <tr><td style="padding:20px 30px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fbff;border-radius:10px;padding:0;">
+      <tr>
+        <td style="padding:14px 18px;font-size:12px;color:#374151;"><strong>Client:</strong> ${pool.ownerName}</td>
+        <td style="padding:14px 18px;font-size:12px;color:#374151;text-align:center;"><strong>Date:</strong> ${serviceDate}</td>
+        <td style="padding:14px 18px;font-size:12px;color:#374151;text-align:right;"><strong>Pool:</strong> ${pool.name}</td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- BODY -->
+  <tr><td style="padding:0 30px 10px;"><table width="100%" cellpadding="0" cellspacing="0">
+
+    <!-- CHEMISTRY SECTION -->
+    <tr><td style="padding:0 0 20px;">
+      <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">
+        Water Chemistry &amp; Balance
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          ${chemCards.slice(0,3).map(c=>`<td width="33%" style="padding:0 4px 8px 0;"><div style="background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:12px 8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+            <div style="font-size:10px;color:#94a3b8;font-weight:600;margin-bottom:6px;text-transform:uppercase;">${c.lbl}</div>
+            <div style="font-size:20px;font-weight:700;color:#1e293b;">${c.val}${c.unit?`<span style="font-size:12px;"> ${c.unit}</span>`:''}</div>
+            ${c.target?`<div style="font-size:9px;color:#94a3b8;margin-top:3px;">target: ${c.target}</div>`:''}
+          </div></td>`).join('')}
+        </tr>
+        <tr>
+          ${chemCards.slice(3,6).map(c=>`<td width="33%" style="padding:0 4px 8px 0;"><div style="background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:12px 8px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+            <div style="font-size:10px;color:#94a3b8;font-weight:600;margin-bottom:6px;text-transform:uppercase;">${c.lbl}</div>
+            <div style="font-size:20px;font-weight:700;color:#1e293b;">${c.val}${c.unit?`<span style="font-size:12px;"> ${c.unit}</span>`:''}</div>
+            ${c.target?`<div style="font-size:9px;color:#94a3b8;margin-top:3px;">target: ${c.target}</div>`:''}
+          </div></td>`).join('')}
+        </tr>
+      </table>
+      <!-- CSI + FC status row -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;">
+        <tr>
+          <td width="60%" style="padding-right:6px;">
+            <div style="background:${csiBg};border:1px solid ${csiBdr};border-radius:10px;padding:12px 16px;">
+              <span style="font-size:12px;font-weight:700;color:${csiColor};">Saturation Index (CSI): ${csiNum}</span>
+              <span style="font-size:12px;color:${csiColor};margin-left:8px;">${cs.text}</span>
+            </div>
+          </td>
+          <td width="40%">
+            <div style="background:${fcBg};border:1px solid ${fcBdr};border-radius:10px;padding:12px 16px;text-align:center;">
+              <span style="font-size:12px;font-weight:700;color:${fcTxt};">FC Status: ${fcStatus}</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+      <!-- Chemicals applied -->
+      <div style="margin-top:8px;background:#f8fafc;border-radius:8px;padding:10px 14px;font-size:12px;color:#64748b;">${chemsText}</div>
+    </td></tr>
+
+    <!-- DEMAND ANALYTICS -->
+    ${demandHtml}
+
+    <!-- WORK PERFORMED -->
+    <tr><td style="padding:0 0 24px;">
+      <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Work Performed</div>
+      <div style="line-height:2;">${workChips}</div>
+    </td></tr>
+
+    <!-- NOTES (conditional) -->
+    ${notesSection}
+
+  </table></td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="border-top:1px solid #e5e7eb;padding:20px 30px;text-align:center;background:#fafafa;border-radius:0 0 18px 18px;">
+    <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:4px;">${settings.bizName||'akaPoolCO Pool Services'}</div>
+    <div style="font-size:11px;color:#94a3b8;">Granite Bay, CA &nbsp;·&nbsp; 916.644.0416 &nbsp;·&nbsp; akapoolco.gb@gmail.com</div>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body></html>`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2293,6 +2438,11 @@ function editPool(idx){
   document.getElementById('pool-del-wrap').style.display='block';
   openSheet('pool-sheet');
 }
+function toggleNotesReport(){
+  notesInReport=!notesInReport;
+  document.getElementById('notes-toggle').classList.toggle('on',notesInReport);
+}
+
 function toggleSWG(){
   swgOn=!swgOn;
   document.getElementById('swg-toggle').classList.toggle('on',swgOn);
