@@ -2965,13 +2965,19 @@ function loadEmailFields(){
 }
 function saveDefaults(){
   settings.minDose=parseFloat(document.getElementById('min-dose').value)||4;
-  settings.clStrength=parseFloat(document.getElementById('cl-str').value)||0.10;
+  // Auto-correct: if user typed a percentage (e.g. 10) instead of a decimal (0.10), fix it.
+  const _rawStr=parseFloat(document.getElementById('cl-str').value);
+  settings.clStrength=(_rawStr>1) ? Math.round(_rawStr)/100 : (_rawStr>0 ? _rawStr : 0.10);
+  // Write the corrected value back so the input always shows the decimal form
+  document.getElementById('cl-str').value=settings.clStrength;
   // season is saved immediately on click via setSeason(); no extra read needed
   S.set('settings',settings);
   alert('✅ Defaults saved!');
 }
 function loadDefaultFields(){
   document.getElementById('min-dose').value=settings.minDose||4;
+  // Auto-correct stored clStrength > 1 (e.g. 10 → 0.10) before displaying
+  if(settings.clStrength>1){ settings.clStrength=Math.round(settings.clStrength)/100; S.set('settings',settings); }
   document.getElementById('cl-str').value=settings.clStrength||0.10;
 
 }
@@ -3086,11 +3092,15 @@ const QA = {
     try {
       let failures = [];
 
+      // Calibration constants: golden scenarios were audited against these exact values.
+      // QA tests ENGINE math — it must NOT use live settings (which may be misconfigured).
+      const QA_CL_STRENGTH = 0.10;   // 10% liquid chlorine
+      const QA_MIN_DOSE    = 4;      // 4 oz minimum dose threshold
+
       this.golden.forEach(test => {
-        // Use live settings.clStrength and settings.minDose — not hardcoded values
         const R = ChemEngine.calcAll(test.pool, test.r,
-                                     settings.clStrength,
-                                     settings.minDose);
+                                     QA_CL_STRENGTH,
+                                     QA_MIN_DOSE);
 
         const csiOk  = R.csiVal !== null &&
                        Math.abs(R.csiVal - test.expect.csiVal) <= MARGIN;
