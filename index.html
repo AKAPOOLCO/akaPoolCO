@@ -1429,6 +1429,9 @@ const ChemEngine = {
     ACID_PH_STEP:          0.2,    // pH units per dose step
     ACID_OZ_PER_STEP_10K:  12,     // oz acid to drop pH by 0.2 in 10,000 gal
 
+    // pH Up dosing — soda ash (sodium carbonate, also called pH Increaser)
+    SODA_ASH_OZ_PER_STEP_10K: 6,   // oz soda ash to raise pH by 0.2 in 10,000 gal
+
     // Salt dosing
     SALT_PPM_PER_LB_10K:   12,     // 1 lb salt per 10,000 gal raises ~12 ppm
 
@@ -1523,6 +1526,14 @@ const ChemEngine = {
     const f   = this.factors;
     const raw = ((ph-targetPH)/f.ACID_PH_STEP) * (vol/10000) * f.ACID_OZ_PER_STEP_10K;
     return raw < minDose ? 0 : Math.round(raw*10)/10;
+  },
+
+  // Soda ash dose (oz) to raise low pH — soda ash = sodium carbonate / pH Increaser
+  sodaAshDose(ph, targetPH, vol, minDose){
+    if(ph >= targetPH - this.factors.ACID_PH_STEP/2) return 0;
+    const f   = this.factors;
+    const raw = ((targetPH - ph) / f.ACID_PH_STEP) * (vol / 10000) * f.SODA_ASH_OZ_PER_STEP_10K;
+    return raw < minDose ? 0 : Math.round(raw);
   },
 
   // Salt dose — returns lbs (number)
@@ -1650,14 +1661,15 @@ const ChemEngine = {
     }
 
     // Doses — each returns 0 if not needed or not applicable
-    const clDose   = !isSWG && fc!=null ? this.chlorineDose(fc, targetFC, vol, clStrength, minDose) : 0;
-    const acidDose = ph!=null && ta!=null ? this.acidDose(ph, targetPH, ta, vol, minDose) : 0;
-    const saltDose = isSWG && salt!=null  ? this.saltDose(salt, targetSalt, vol) : 0;
-    const cyaDose  = cya!=null            ? this.cyaDose(cya, targetCYA, vol) : 0;
+    const clDose     = !isSWG && fc!=null ? this.chlorineDose(fc, targetFC, vol, clStrength, minDose) : 0;
+    const acidDose   = ph!=null && ta!=null ? this.acidDose(ph, targetPH, ta, vol, minDose) : 0;
+    const phUpDose   = ph!=null            ? this.sodaAshDose(ph, targetPH, vol, minDose) : 0;
+    const saltDose   = isSWG && salt!=null  ? this.saltDose(salt, targetSalt, vol) : 0;
+    const cyaDose    = cya!=null            ? this.cyaDose(cya, targetCYA, vol) : 0;
 
     return {
       // Doses
-      csiVal, csiResult, fcStatus, clDose, acidDose, saltDose, cyaDose,
+      csiVal, csiResult, fcStatus, clDose, acidDose, phUpDose, saltDose, cyaDose,
       // Targets + vol — returned so display layer never re-derives them independently
       targetFC, targetPH, targetSalt, targetCYA, vol, isSWG
     };
@@ -1780,7 +1792,7 @@ function calcDosing(){
   );
   // Unpack results (R also carries targets + vol + isSWG for display rows)
   const {csiVal, csiResult:cs, fcStatus,
-         clDose, acidDose, saltDose, cyaDose,
+         clDose, acidDose, phUpDose, saltDose, cyaDose,
          targetFC, targetPH, targetSalt, targetCYA, vol, isSWG} = R;
 
   let html = '';
@@ -1819,9 +1831,9 @@ function calcDosing(){
     html+=`<div class="dose-block ${phCls}">
       <div class="dose-title ${phTcls}">${phOk?'✅ pH OK':ph>7.8?'⚠️ pH High — Add Acid':'⚠️ pH Low — Add pH Up'}</div>
       <div class="dose-row"><span>Current pH</span><span class="dose-val">${ph}</span></div>
-      <div class="dose-row"><span>Target</span><span class="dose-val">${targetPH} (range 7.2–7.8)</span></div>
-      ${acidDose>0?`<div class="dose-row"><span><strong>Muriatic Acid</strong></span><span class="dose-val"><strong>${acidDose} oz</strong></span></div>`:''}
-      ${ph<7.2?`<div class="dose-note">Add soda ash (sodium carbonate) to raise pH. Approx 6 oz per 10,000 gal to raise 0.2 units.</div>`:''}
+      <div class="dose-row"><span>Target pH</span><span class="dose-val">${targetPH} (range 7.2–7.8)</span></div>
+      ${acidDose>0?`<div class="dose-row"><span><strong>Dose needed</strong></span><span class="dose-val"><strong>${acidDose} oz muriatic acid</strong></span></div>`:''}
+      ${phUpDose>0?`<div class="dose-row"><span><strong>Dose needed</strong></span><span class="dose-val"><strong>${phUpDose} oz soda ash</strong></span></div>`:''}
       ${getTrend(poolId,'ph')?`<div class="dose-row"><span>pH trend</span><span>${trendHtml(getTrend(poolId,'ph'),'ph')}</span></div>`:''}
     </div>`;
   }
@@ -1829,7 +1841,7 @@ function calcDosing(){
   // ── CSI block — shows whenever pH + TA are present ──
   if(ph&&ta){
     html+=`<div class="dose-block ${cs.dcls}">
-      <div class="dose-title ${cs.tcls}">💧 CSI — Water Balance${cya&&csiVal!==null?` (CYA-corrected)`:''}</div>
+      <div class="dose-title ${cs.tcls}">💧 CSI — Water Balance</div>
       <div class="dose-row"><span>CSI value</span><span class="dose-val">${csiVal!==null?(csiVal>0?'+':'')+csiVal:'—'}</span></div>
       <div class="dose-row"><span>Status</span><span><span class="csi-badge ${cs.cls}">${cs.text}</span></span></div>
       <div class="dose-note">Ideal range: −0.3 to +0.3</div>
@@ -2259,7 +2271,7 @@ async function submitService(){
 
   // All dosing math in one call — ChemEngine.calcAll() is the single source of truth
   const {csiVal:csi, csiResult:cs, fcStatus,
-         clDose, acidDose, saltDose, cyaDose} =
+         clDose, acidDose, phUpDose, saltDose, cyaDose} =
     ChemEngine.calcAll(pool, {fc,tc,cc,ph,ta,ch,cya,salt,temp},
                        settings.clStrength, settings.minDose);
 
@@ -2468,7 +2480,7 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,c
           {lbl:'pH', val:ph, unit:'', target:pool.targetPH||7.4,
            ok:ph!=null&&ph>=7.2&&ph<=7.8, warn:ph!=null&&(ph<7.0||ph>8.0),
            // acidDose already computed by ChemEngine.calcAll() in submitService — reuse it
-           action:acidDose>0?`Add ${acidDose} oz acid`:ph!=null&&ph<7.2?'Add pH Up':'OK'},
+           action:acidDose>0?`Add ${acidDose} oz muriatic acid`:phUpDose>0?`Add ${phUpDose} oz soda ash`:'OK'},
           {lbl:'Total Alkalinity', val:ta, unit:'ppm', target:pool.targetTA||80,
            ok:ta!=null&&ta>=60&&ta<=120, warn:ta!=null&&(ta<40||ta>160), action:''},
           {lbl:'Calcium Hardness', val:ch, unit:'ppm', target:null,
