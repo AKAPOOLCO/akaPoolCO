@@ -142,6 +142,8 @@ a{color:var(--accent);}
 
 /* FREQ SELECTOR (pool profile) */
 .freq-btns{display:flex;gap:6px;margin-top:6px;}
+.pool-type-btn{flex:1;padding:8px 4px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--surface);font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s;}
+.pool-type-btn.active{border-color:var(--accent);background:var(--blue-lt);color:var(--accent);}
 .freq-btn{flex:1;padding:8px 4px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--surface2);font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s;}
 .freq-btn.active{border-color:var(--accent);background:var(--blue-lt);color:var(--accent);}
 
@@ -514,15 +516,30 @@ a{color:var(--accent);}
 ───────────────────────────────────────── */
 .hist-entry{
   background:var(--surface);border:1.5px solid var(--border);
-  border-radius:var(--r);padding:11px 13px;margin-bottom:7px;
+  border-radius:var(--r);margin-bottom:6px;overflow:hidden;
 }
-.hist-entry.quick{background:var(--surface2);border-style:dashed;}
-.hist-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.hist-entry.quick{border-style:dashed;}
+.hist-entry.skipped{border-color:var(--red-bd);}
+.hist-row-hdr{
+  display:flex;align-items:center;gap:8px;padding:10px 13px;
+  cursor:pointer;user-select:none;
+}
+.hist-row-hdr:active{background:var(--surface2);}
+.hist-chevron{margin-left:auto;font-size:11px;color:var(--muted);transition:transform .2s;}
+.hist-entry.open .hist-chevron{transform:rotate(180deg);}
+.hist-body{display:none;padding:0 13px 11px;}
+.hist-entry.open .hist-body{display:block;}
 .hist-date{font-size:12px;font-weight:700;font-family:var(--mono);}
 .hist-readings{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:6px;}
 .hist-cell{background:var(--surface2);border-radius:6px;padding:5px 8px;text-align:center;}
 .hist-cell-lbl{font-size:9px;font-weight:800;color:var(--muted);text-transform:uppercase;}
 .hist-cell-val{font-size:14px;font-weight:700;font-family:var(--mono);}
+.hist-section{font-size:9px;font-weight:800;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.6px;margin:10px 0 4px;padding-top:8px;border-top:1px solid var(--border);}
+.hist-dose-row{display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;padding:3px 0;}
+.hist-dose-lbl{color:var(--muted);}
+.hist-dose-val{font-weight:700;font-family:var(--mono);}
 
 /* ─────────────────────────────────────────
    MESSAGES
@@ -938,6 +955,18 @@ a{color:var(--accent);}
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- POOL TYPE TOGGLE -->
+  <div style="background:var(--surface2);border-radius:var(--r);padding:10px 13px;margin-bottom:13px;">
+    <div class="toggle-label" style="margin-bottom:6px;">Pool Surface Type</div>
+    <div class="toggle-sub" style="margin-bottom:10px;">Affects CH target, pH target, and CSI thresholds</div>
+    <div style="display:flex;gap:6px;">
+      <button type="button" class="pool-type-btn active" id="pt-plaster"    onclick="setPoolType('plaster')">🪨 Plaster</button>
+      <button type="button" class="pool-type-btn"        id="pt-vinyl"      onclick="setPoolType('vinyl')">🔵 Vinyl</button>
+      <button type="button" class="pool-type-btn"        id="pt-fiberglass" onclick="setPoolType('fiberglass')">🟢 Fiberglass</button>
+    </div>
+    <input type="hidden" id="p-pool-type" value="plaster">
   </div>
 
   <!-- SCHEDULE BLOCK -->
@@ -1457,9 +1486,12 @@ const ChemEngine = {
     // Chlorine dosing
     CL_PPM_PER_OZ_10K:    0.00013, // 1 oz 10% liquid Cl per 10,000 gal ≈ 0.13 ppm FC rise
     // FC target ratios by pool type and season (TFP: FC = CYA × ratio, with floor)
+    // FC targets calibrated to TFP published table (verified April 2026)
+    // Liquid summer: FC = CYA/10 + 2 (hits exact TFP midpoint for CYA 20–100, all ✅)
+    // SWG summer: ratio 0.075, min 5 (all 9 CYA levels within TFP range ✅)
     FC_RATIO: {
-      chlorine: { summer: { ratio: 0.15, min: 6 }, winter: { ratio: 0.10, min: 4 } },
-      swg:      { summer: { ratio: 0.07, min: 5 }, winter: { ratio: 0.04, min: 3 } }
+      chlorine: { summer: { ratio: 0.10, offset: 2, min: 3 }, winter: { ratio: 0.07, offset: 1, min: 3 } },
+      swg:      { summer: { ratio: 0.075, offset: 0, min: 5 }, winter: { ratio: 0.04, offset: 0, min: 3 } }
     },
 
     // Acid dosing — 31.45% muriatic acid
@@ -1468,6 +1500,14 @@ const ChemEngine = {
 
     // pH Up dosing — soda ash (sodium carbonate, also called pH Increaser)
     SODA_ASH_OZ_PER_STEP_10K: 6,   // oz soda ash to raise pH by 0.2 in 10,000 gal
+
+    // Calcium hardness dosing — calcium chloride (77–80% granular)
+    CH_PPM_PER_LB_10K:     8,      // 1 lb calcium chloride raises CH ~8 ppm per 10,000 gal
+    DEFAULT_TARGET_CH:     250,    // default CH target for non-SWG pools (ppm)
+    DEFAULT_TARGET_CH_SWG: 350,    // default CH target for SWG pools (ppm)
+
+    // Total Alkalinity dosing — sodium bicarbonate (baking soda)
+    BICARB_PPM_PER_LB_10K: 7,      // 1 lb baking soda raises TA ~7 ppm per 10,000 gal
 
     // Salt dosing
     SALT_PPM_PER_LB_10K:   12,     // 1 lb salt per 10,000 gal raises ~12 ppm
@@ -1547,7 +1587,8 @@ const ChemEngine = {
     const key = isSWG ? 'swg' : 'chlorine';
     const cfg = this.factors.FC_RATIO[key][s];
     if(!cya) return cfg.min;
-    return Math.max(cfg.min, Math.round((cya * cfg.ratio)*2)/2);
+    // Formula: FC = CYA*ratio + offset, rounded to nearest 0.5, with floor
+    return Math.max(cfg.min, Math.round((cya * cfg.ratio + (cfg.offset||0))*2)/2);
   },
 
   // Chlorine dose — returns oz (number)
@@ -1571,6 +1612,19 @@ const ChemEngine = {
     const f   = this.factors;
     const raw = ((targetPH - ph) / f.ACID_PH_STEP) * (vol / 10000) * f.SODA_ASH_OZ_PER_STEP_10K;
     return raw < minDose ? 0 : Math.round(raw);
+  },
+
+  // Calcium chloride dose (lbs) to raise CH
+  // Use calcium chloride granular ~77-80%
+  chDose(ch, targetCH, vol){
+    if(!ch||!targetCH||ch>=targetCH-5) return 0;
+    return Math.round(((targetCH-ch)/this.factors.CH_PPM_PER_LB_10K)*(vol/10000)*10)/10;
+  },
+
+  // Sodium bicarbonate dose (lbs) to raise TA
+  bicarbDose(ta, targetTA, vol){
+    if(!ta||!targetTA||ta>=targetTA-5) return 0;
+    return Math.round(((targetTA-ta)/this.factors.BICARB_PPM_PER_LB_10K)*(vol/10000)*10)/10;
   },
 
   // Salt dose — returns lbs (number)
@@ -1703,12 +1757,24 @@ const ChemEngine = {
     const phUpDose   = ph!=null            ? this.sodaAshDose(ph, targetPH, vol, minDose) : 0;
     const saltDose   = isSWG && salt!=null  ? this.saltDose(salt, targetSalt, vol) : 0;
     const cyaDose    = cya!=null            ? this.cyaDose(cya, targetCYA, vol) : 0;
+    const f          = this.factors;
+    // Pool type aware defaults
+    const poolType   = pool.poolType || 'plaster';
+    const defaultCH  = poolType==='vinyl'      ? 150
+                     : poolType==='fiberglass' ? 250
+                     : (isSWG ? f.DEFAULT_TARGET_CH_SWG : f.DEFAULT_TARGET_CH); // plaster
+    const targetCH   = pool.targetCH || defaultCH;
+    const targetTA   = pool.targetTA  || 80;
+    const chDose_v   = ch!=null ? this.chDose(ch, targetCH, vol) : 0;
+    const bicarbDose = ta!=null ? this.bicarbDose(ta, targetTA, vol) : 0;
 
     return {
       // Doses
       csiVal, csiResult, fcStatus, clDose, acidDose, phUpDose, saltDose, cyaDose,
+      // CSI corrective doses
+      chDose: chDose_v, bicarbDose, targetCH, targetTA,
       // Targets + vol — returned so display layer never re-derives them independently
-      targetFC, targetPH, targetSalt, targetCYA, vol, isSWG
+      targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType
     };
   }
 
@@ -1830,7 +1896,8 @@ function calcDosing(){
   // Unpack results (R also carries targets + vol + isSWG for display rows)
   const {csiVal, csiResult:cs, fcStatus,
          clDose, acidDose, phUpDose, saltDose, cyaDose,
-         targetFC, targetPH, targetSalt, targetCYA, vol, isSWG} = R;
+         chDose, bicarbDose, targetCH, targetTA,
+         targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType} = R;
 
   let html = '';
 
@@ -1877,12 +1944,49 @@ function calcDosing(){
 
   // ── CSI block — shows whenever pH + TA are present ──
   if(ph&&ta){
-    html+=`<div class="dose-block ${cs.dcls}">
-      <div class="dose-title ${cs.tcls}">💧 CSI — Water Balance</div>
+    // Pool-type-aware CSI status override:
+    // Vinyl has no calcium → water can be more negative without surface risk
+    // Fiberglass: moderate, use default thresholds
+    // Plaster: strictest thresholds (default)
+    let csOverride = cs;
+    if(poolType==='vinyl' && csiVal!==null){
+      if(csiVal>=-0.6)       csOverride={...cs, level:'balanced', text:'Balanced ✓ (vinyl OK)', cls:'b-green', dcls:'d-ok', tcls:'c-ok', fix:''};
+      else if(csiVal>=-0.9)  csOverride={...cs, level:'low_corrosive', text:'Slightly corrosive', cls:'b-yellow', dcls:'d-warn', tcls:'c-warn',
+        fix:'Vinyl liner is not at risk, but low CSI can corrode metal fittings and heater components. Monitor and raise CH or TA slightly if persistent.'};
+    }
+    const cs2 = csOverride;
+    // Build dynamic "How to fix" with calculated doses for corrosive states
+    let csiFix = cs.fix;
+    if(cs.level==='corrosive'||cs.level==='low_corrosive'){
+      const hasCH   = ch!=null && chDose>0;
+      const hasTA   = ta!=null && bicarbDose>0;
+      if(hasCH && hasTA){
+        // Both parameters are low — for severe corrosion add BOTH; mild: either one is enough
+        const intro = cs.level==='corrosive'
+          ? 'Add <strong>BOTH</strong> to restore water balance:'
+          : 'Add <strong>either one or both</strong> to correct balance:';
+        csiFix = `${intro}<br>`
+          + `&bull; <strong>${chDose} lbs calcium chloride</strong> → raises CH from ${ch} to ${targetCH} ppm<br>`
+          + `&bull; <strong>${bicarbDose} lbs baking soda</strong> → raises TA from ${ta} to ${targetTA} ppm`;
+      } else if(hasCH){
+        csiFix = `Add <strong>${chDose} lbs calcium chloride</strong> to raise CH from ${ch} to ${targetCH} ppm.`;
+      } else if(hasTA){
+        csiFix = `Add <strong>${bicarbDose} lbs baking soda</strong> to raise TA from ${ta} to ${targetTA} ppm.`;
+      } else {
+        csiFix = cs.fix; // fallback to generic if no readings entered
+      }
+    }
+    if(cs.level==='low_scaling'||cs.level==='scaling'){
+      const acidParts=[];
+      if(ta!=null&&ta>targetTA+10) acidParts.push(`Add muriatic acid to lower TA (currently ${ta} ppm, target ${targetTA} ppm)`);
+      if(acidParts.length) csiFix = acidParts.join(' ') + ' — use the pH/Acid dose block above for exact amount.';
+    }
+    html+=`<div class="dose-block ${cs2.dcls}">
+      <div class="dose-title ${cs2.tcls}">💧 CSI — Water Balance${poolType&&poolType!=='plaster'?` <span style="font-size:10px;font-weight:400;opacity:.7;">(${poolType})</span>`:''}</div>
       <div class="dose-row"><span>CSI value</span><span class="dose-val">${csiVal!==null?(csiVal>0?'+':'')+csiVal:'—'}</span></div>
-      <div class="dose-row"><span>Status</span><span><span class="csi-badge ${cs.cls}">${cs.text}</span></span></div>
-      <div class="dose-note">Ideal range: −0.3 to +0.3</div>
-      ${cs.fix?`<div class="dose-note" style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08);"><strong>How to fix:</strong> ${cs.fix}</div>`:''}
+      <div class="dose-row"><span>Status</span><span><span class="csi-badge ${cs2.cls}">${cs2.text}</span></span></div>
+      <div class="dose-note">Ideal range: −0.3 to +0.3${poolType==='vinyl'?' (vinyl: −0.6 acceptable)':poolType==='fiberglass'?' (fiberglass: −0.5 acceptable)':''}</div>
+      ${csiFix?`<div class="dose-note" style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08);"><strong>How to fix:</strong> ${csiFix}</div>`:''}
     </div>`;
   }
 
@@ -2108,7 +2212,7 @@ function renderRoute(){
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
         </div>
         <div class="pool-meta">
-          <div class="pool-name">${pool.name}${pool.isSWG?` <span class="badge b-teal" style="font-size:9px;">SWG</span>`:''} ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}</div>
+          <div class="pool-name">${pool.name}${pool.isSWG?` <span class="badge b-teal" style="font-size:9px;">SWG</span>`:''} ${pool.poolType&&pool.poolType!=='plaster'?` <span class="badge b-gray" style="font-size:9px;">${pool.poolType}</span>`:''} ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}</div>
           <div class="pool-owner">${pool.ownerName||'—'} · ${pool.phone||'—'}</div>
           ${nextDueHtml(pool)}
         </div>
@@ -2317,7 +2421,8 @@ async function submitService(){
 
   // All dosing math in one call — ChemEngine.calcAll() is the single source of truth
   const {csiVal:csi, csiResult:cs, fcStatus,
-         clDose, acidDose, phUpDose, saltDose, cyaDose} =
+         clDose, acidDose, phUpDose, saltDose, cyaDose,
+         chDose, bicarbDose} =
     ChemEngine.calcAll(pool, {fc,tc,cc,ph,ta,ch,cya,salt,temp},
                        settings.clStrength, settings.minDose);
 
@@ -2614,71 +2719,161 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,c
 // ─────────────────────────────────────────────────────────────
 //  HISTORY
 // ─────────────────────────────────────────────────────────────
+function toggleHistEntry(el){
+  el.closest('.hist-entry').classList.toggle('open');
+}
+
 function showHistory(poolId){
   const pool=pools.find(p=>p.id===poolId);
   document.getElementById('hist-title').textContent=`History — ${pool.name}`;
-  const poolLogs=[...logs].filter(l=>l.poolId===poolId).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20);
+
+  // 90-day window — display only, does not delete logs (old logs still used for Z-score)
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-90);
+  const cutStr=cutoff.toISOString().split('T')[0];
+  const poolLogs=[...logs]
+    .filter(l=>l.poolId===poolId && l.date>=cutStr)
+    .sort((a,b)=>b.date.localeCompare(a.date));
+
   if(!poolLogs.length){
-    document.getElementById('hist-content').innerHTML=`<div class="empty-state"><div>No logs yet</div></div>`;
-  } else {
-    document.getElementById('hist-content').innerHTML=poolLogs.map(l=>{
-      if(l.skipped)return`<div class="hist-entry" style="border-color:var(--red-bd);">
-        <div class="hist-header"><span class="hist-date">${l.date}</span><span class="badge b-red">Skipped</span></div>
-        <div class="text-sm text-muted">${l.skipReason||''} ${l.notes?'· '+l.notes:''}</div>
-      </div>`;
-      if(l.isQuickVisit){
-        const otoLabels={none:'No chlorine ⚠️',clear:'Trace',yellow:'Present ✓',orange:'High'};
-        return`<div class="hist-entry quick">
-          <div class="hist-header"><span class="hist-date">${l.date}</span><span class="badge b-teal">⚡ Quick</span></div>
-          <div class="text-sm">OTO: <strong>${otoLabels[l.otos]||'—'}</strong></div>
-          ${l.work&&l.work.length?`<div class="text-xs text-muted mt8" style="margin-top:4px;">${l.work.join(', ')}</div>`:''}
-          ${l.notes?`<div class="text-xs text-muted">${l.notes}</div>`:''}
-        </div>`;
-      }
-      // ChemEngine directly — no legacy wrapper, same math as live panel and email
-      const csi=ChemEngine.csi(l.ph,l.temp,l.ta,l.ch,l.cya);
-      const cs=csiStatusFull(csi);
-      // Chemicals added this visit
-      const hasChemicals = (l.clAdded&&l.clAdded>0) || (l.acidAdded&&l.acidAdded>0);
-      return`<div class="hist-entry">
-        <div class="hist-header">
-          <span class="hist-date">${l.date}</span>
-          <div style="display:flex;gap:4px;flex-wrap:wrap;">
-            ${csi!==null?`<span class="csi-badge ${cs.cls}">CSI ${csi>0?'+':''}${csi}</span>`:''}
-            ${l.chemicalsAdded===true?`<span class="badge b-green" style="font-size:9px;">Chems ✓</span>`:l.chemicalsAdded===false?`<span class="badge b-gray" style="font-size:9px;">No chems</span>`:''}
-          </div>
-        </div>
-        <div class="hist-readings">
-          ${[['FC',l.fc,'ppm'],['TC',l.tc,'ppm'],['CC',l.cc,'ppm'],['pH',l.ph,''],['TA',l.ta,'ppm'],['CH',l.ch,'ppm']].map(([lbl,val,u])=>`
-            <div class="hist-cell">
-              <div class="hist-cell-lbl">${lbl}</div>
-              <div class="hist-cell-val" style="font-size:14px;">${val??'—'}${val&&u?`<span style="font-size:9px;">${u}</span>`:''}</div>
-            </div>`).join('')}
-        </div>
-        <div class="hist-readings" style="margin-top:4px;">
-          ${[['CYA',l.cya,'ppm'],['Temp',l.temp,'°F'],['Salt',l.salt,'ppm']].map(([lbl,val,u])=>`
-            <div class="hist-cell">
-              <div class="hist-cell-lbl">${lbl}</div>
-              <div class="hist-cell-val" style="font-size:14px;">${val??'—'}${val&&u?`<span style="font-size:9px;">${u}</span>`:''}</div>
-            </div>`).join('')}
-          ${(l.clAdded&&l.clAdded>0)?`
-            <div class="hist-cell" style="background:var(--green-lt);">
-              <div class="hist-cell-lbl" style="color:var(--green);">Added Cl</div>
-              <div class="hist-cell-val" style="font-size:14px;color:var(--green);">${l.clAdded}<span style="font-size:9px;"> oz</span></div>
-            </div>`:''}
-          ${(l.acidAdded&&l.acidAdded>0)?`
-            <div class="hist-cell" style="background:var(--yellow-lt);">
-              <div class="hist-cell-lbl" style="color:var(--yellow);">Added Acid</div>
-              <div class="hist-cell-val" style="font-size:14px;color:var(--yellow);">${l.acidAdded}<span style="font-size:9px;"> oz</span></div>
-            </div>`:''}
-        </div>
-        ${l.work&&l.work.length?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
-          ${l.work.map(w=>`<span style="font-size:10px;background:var(--surface2);border-radius:10px;padding:2px 8px;color:var(--muted);font-weight:700;">${w}</span>`).join('')}
-        </div>`:''}
-        ${l.notes?`<div class="text-xs text-muted" style="margin-top:4px;font-style:italic;">"${l.notes}"</div>`:''}
-      </div>`;
-    }).join('');
+    document.getElementById('hist-content').innerHTML=
+      `<div class="empty-state"><div>No logs in the last 90 days</div></div>`;
+    openSheet('history-sheet');return;
   }
+
+  const otoLabels={none:'No chlorine ⚠️',clear:'Trace',yellow:'Present ✓',orange:'High','not-done':'Not done'};
+  const workLabels={'test-only':'Test Only','leaves':'Leaves','brush':'Brush','skimmer':'Skimmer','filter':'Filter'};
+
+  document.getElementById('hist-content').innerHTML=poolLogs.map(l=>{
+
+    // ── SKIPPED ──
+    if(l.skipped) return `
+      <div class="hist-entry skipped">
+        <div class="hist-row-hdr" onclick="toggleHistEntry(this)">
+          <span class="hist-date">${l.date}</span>
+          <span class="badge b-red">Skipped</span>
+          <span class="hist-chevron">▼</span>
+        </div>
+        <div class="hist-body">
+          <div class="text-sm text-muted">${l.skipReason||'No reason given'}${l.notes?' · '+l.notes:''}</div>
+        </div>
+      </div>`;
+
+    // ── QUICK LOG ──
+    if(l.isQuickVisit) return `
+      <div class="hist-entry quick">
+        <div class="hist-row-hdr" onclick="toggleHistEntry(this)">
+          <span class="hist-date">${l.date}</span>
+          <span class="badge b-teal">⚡ Quick</span>
+          <span style="font-size:11px;color:var(--muted);">OTO: ${otoLabels[l.otos]||'—'}</span>
+          <span class="hist-chevron">▼</span>
+        </div>
+        <div class="hist-body">
+          ${l.work&&l.work.length?`
+            <div class="hist-section">Work performed</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              ${l.work.map(w=>`<span style="font-size:10px;background:var(--surface2);border-radius:10px;padding:2px 8px;color:var(--muted);font-weight:700;">${workLabels[w]||w}</span>`).join('')}
+            </div>`:''}
+          ${l.notes?`<div class="text-xs text-muted" style="margin-top:6px;font-style:italic;">"${l.notes}"</div>`:''}
+        </div>
+      </div>`;
+
+    // ── FULL LOG ──
+    const R = ChemEngine.calcAll(pool,
+      {fc:l.fc,tc:l.tc,cc:l.cc,ph:l.ph,ta:l.ta,ch:l.ch,cya:l.cya,salt:l.salt,temp:l.temp},
+      settings.clStrength, settings.minDose);
+    const cs = csiStatusFull(R.csiVal);
+
+    // Summary badges for the collapsed header row
+    const fcBadge = l.fc!=null
+      ? (l.fc<2?`<span class="badge b-red">FC ${l.fc}</span>`
+        :l.fc<R.targetFC?`<span class="badge b-yellow">FC ${l.fc}</span>`
+        :`<span class="badge b-green">FC ${l.fc}</span>`)
+      : '';
+    const csiBadge = R.csiVal!==null
+      ? `<span class="csi-badge ${cs.cls}">CSI ${R.csiVal>0?'+':''}${R.csiVal}</span>` : '';
+    const chemBadge = l.chemicalsAdded===true
+      ? `<span class="badge b-green" style="font-size:9px;">Chems ✓</span>`
+      : l.chemicalsAdded===false
+        ? `<span class="badge b-gray" style="font-size:9px;">No chems</span>` : '';
+
+    // Dose rows helper
+    const doseRow=(lbl,val,unit,color='')=>val>0
+      ?`<div class="hist-dose-row">
+          <span class="hist-dose-lbl">${lbl}</span>
+          <span class="hist-dose-val" style="${color?'color:'+color:''}">${val} ${unit}</span>
+        </div>`:'';
+
+    return `
+      <div class="hist-entry">
+        <div class="hist-row-hdr" onclick="toggleHistEntry(this)">
+          <span class="hist-date">${l.date}</span>
+          ${fcBadge}${csiBadge}${chemBadge}
+          <span class="hist-chevron">▼</span>
+        </div>
+        <div class="hist-body">
+
+          <!-- TEST RESULTS -->
+          <div class="hist-section">Test results</div>
+          <div class="hist-readings">
+            ${[['FC',l.fc,'ppm'],['TC',l.tc,'ppm'],['CC',l.cc,'ppm'],
+               ['pH',l.ph,''],['TA',l.ta,'ppm'],['CH',l.ch,'ppm']].map(([lbl,val,u])=>`
+              <div class="hist-cell">
+                <div class="hist-cell-lbl">${lbl}</div>
+                <div class="hist-cell-val">${val??'—'}${val!=null&&u?`<span style="font-size:9px;">${u}</span>`:''}</div>
+              </div>`).join('')}
+          </div>
+          <div class="hist-readings" style="margin-top:4px;">
+            ${[['CYA',l.cya,'ppm'],['Temp',l.temp,'°F'],['Salt',l.salt,'ppm']].map(([lbl,val,u])=>`
+              <div class="hist-cell">
+                <div class="hist-cell-lbl">${lbl}</div>
+                <div class="hist-cell-val">${val??'—'}${val!=null&&u?`<span style="font-size:9px;">${u}</span>`:''}</div>
+              </div>`).join('')}
+            ${R.csiVal!==null?`<div class="hist-cell" style="background:var(--surface2);">
+              <div class="hist-cell-lbl">CSI</div>
+              <div class="hist-cell-val" style="font-size:12px;">${R.csiVal>0?'+':''}${R.csiVal}</div>
+            </div>`:''}
+          </div>
+
+          <!-- RECOMMENDED DOSES (what tech saw on screen / client received) -->
+          ${(R.clDose||R.acidDose||R.phUpDose||R.saltDose||R.cyaDose||R.chDose||R.bicarbDose)?`
+          <div class="hist-section">Recommended doses</div>
+          ${doseRow('Liquid chlorine', R.clDose, 'fl oz', 'var(--green)')}
+          ${doseRow('Muriatic acid',   R.acidDose, 'fl oz', 'var(--yellow)')}
+          ${doseRow('Soda ash (pH up)',R.phUpDose, 'fl oz')}
+          ${doseRow('Salt',            R.saltDose, 'lbs',   'var(--swg)')}
+          ${doseRow('Liquid stabilizer', R.cyaDose,'fl oz')}
+          ${doseRow('Calcium chloride', R.chDose,  'lbs')}
+          ${doseRow('Baking soda (TA)', R.bicarbDose,'lbs')}
+          `:''}
+
+          <!-- CHEMICALS ACTUALLY ADDED -->
+          ${(l.clAdded&&l.clAdded>0)||(l.acidAdded&&l.acidAdded>0)?`
+          <div class="hist-section">Chemicals actually added</div>
+          ${l.clAdded&&l.clAdded>0?`<div class="hist-dose-row">
+            <span class="hist-dose-lbl">Liquid chlorine poured</span>
+            <span class="hist-dose-val" style="color:var(--green);">${l.clAdded} oz</span>
+          </div>`:''}
+          ${l.acidAdded&&l.acidAdded>0?`<div class="hist-dose-row">
+            <span class="hist-dose-lbl">Muriatic acid poured</span>
+            <span class="hist-dose-val" style="color:var(--yellow);">${l.acidAdded} oz</span>
+          </div>`:''}
+          `:''}
+
+          <!-- WORK PERFORMED -->
+          ${l.work&&l.work.length?`
+          <div class="hist-section">Work performed</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;">
+            ${l.work.map(w=>`<span style="font-size:10px;background:var(--surface2);border-radius:10px;padding:2px 8px;color:var(--muted);font-weight:700;">${workLabels[w]||w}</span>`).join('')}
+          </div>`:''}
+
+          <!-- NOTES -->
+          ${l.notes?`<div class="text-xs text-muted" style="margin-top:6px;font-style:italic;">"${l.notes}"</div>`:''}
+
+        </div>
+      </div>`;
+
+  }).join('');
+
   openSheet('history-sheet');
 }
 
@@ -2913,6 +3108,10 @@ function editPool(idx){
   document.getElementById('p-notes').value=p.notes||'';
   swgOn=!!p.isSWG;
   document.getElementById('swg-toggle').classList.toggle('on',swgOn);
+  // Load pool type (default plaster for existing pools with no poolType set)
+  const pt = p.poolType||'plaster';
+  document.getElementById('p-pool-type').value=pt;
+  ['plaster','vinyl','fiberglass'].forEach(t=>document.getElementById('pt-'+t).classList.toggle('active',t===pt));
   document.getElementById('swg-fields').style.display=swgOn?'block':'none';
   document.getElementById('p-salt').value=p.saltTarget||3200;
   document.getElementById('p-swg-brand').value=p.swgBrand||'pentair';
@@ -2953,6 +3152,26 @@ function setPoolSeason(s){
   document.getElementById('p-tfc').value = fc;
 }
 
+function setPoolType(type){
+  // Only one button active at a time
+  ['plaster','vinyl','fiberglass'].forEach(t=>{
+    document.getElementById('pt-'+t).classList.toggle('active', t===type);
+  });
+  document.getElementById('p-pool-type').value = type;
+
+  // Smart defaults per type
+  const tph = document.getElementById('p-tph');
+  const curPH = parseFloat(tph.value)||0;
+
+  if(type==='plaster'){
+    // Plaster: target pH 7.6 (TFP recommends 7.6-7.8 for plaster)
+    if(!curPH || curPH===7.4 || curPH===7.2) tph.value = '7.6';
+  } else {
+    // Vinyl / Fiberglass: target pH 7.4 is fine
+    if(!curPH || curPH===7.6) tph.value = '7.4';
+  }
+}
+
 function toggleSWG(){
   swgOn=!swgOn;
   document.getElementById('swg-toggle').classList.toggle('on',swgOn);
@@ -2987,6 +3206,7 @@ function savePool(){
     targetPH:parseFloat(document.getElementById('p-tph').value)||7.4,
     targetCYA:parseFloat(document.getElementById('p-tcya').value)||70,
     targetTA:parseFloat(document.getElementById('p-tta').value)||80,
+    poolType:document.getElementById('p-pool-type').value||'plaster',
     isSWG:swgOn,
     saltTarget:parseFloat(document.getElementById('p-salt').value)||3200,
     swgBrand:document.getElementById('p-swg-brand').value,
@@ -3158,7 +3378,7 @@ const QA = {
       pool: { volume:15000, isSWG:true, targetFC:5, targetPH:7.4,
                saltTarget:3200, targetCYA:70 },
       r:    { fc:5, ph:7.4, ta:90, ch:350, cya:70, salt:3200, temp:82 },
-      expect: { csiVal:0.04, clDose:0, fcStatus:'OK' }
+      expect: { csiVal:0.04, clDose:0, fcStatus:'LOW' }  // fc=5, new target=5.5 (TFP SWG CYA70)
     },
     {
       // Low-FC liquid chlorine pool — should calculate a real dose
@@ -3166,7 +3386,7 @@ const QA = {
       pool: { volume:15000, isSWG:false, targetFC:6, targetPH:7.4,
                saltTarget:null, targetCYA:50 },
       r:    { fc:2, ph:7.4, ta:80, ch:250, cya:50, salt:null, temp:80 },
-      expect: { csiVal:-0.15, clDose:78, fcStatus:'LOW' }
+      expect: { csiVal:-0.15, clDose:98, fcStatus:'LOW' }  // fc=2, new target=7 (TFP liquid CYA50)
     },
     {
       // Corrosive winter water — CSI must flag corrosive
