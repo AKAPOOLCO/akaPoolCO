@@ -2441,7 +2441,7 @@ async function submitService(){
     btn.innerHTML='<span class="spinner"></span> Sending...';btn.disabled=true;
     try{
       // buildHTMLEmail inside try so any rendering error is caught and shown
-      const clientBody=buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,notesInReport);
+      const clientBody=buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,notesInReport);
       // Pass publicKey directly — self-contained, no dependency on emailjs.init() state
       await emailjs.send(emailCfg.svcId,emailCfg.tplId,{
         email:pool.email,
@@ -2526,7 +2526,7 @@ function buildQuickHTMLEmail(pool,log){
 </body></html>`;
 }
 
-function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,saltDose,cyaDose,csi,cs,includeNotes){
+function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,includeNotes){
   const {fc,tc,cc,ph,ta,ch,cya,salt,temp,work,notes,clAdded,acidAdded}=log;
 
   // ── CSI status colours ──
@@ -3456,6 +3456,4 @@ const QA = {
   }
 };
 
-</script>
-</body>
-</html>
+</script
