@@ -638,6 +638,9 @@ a{color:var(--accent);}
     <div id="lock-err" style="color:var(--red);font-size:12px;margin-top:8px;display:none;">Incorrect PIN</div>
     <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border);">
       <button class="btn btn-ghost btn-full" onclick="hardReset()" style="font-size:12px;color:var(--muted);">🔄 Reset to Default PIN</button>
+      <div style="margin-top:8px;text-align:center;font-size:11px;color:var(--hint);">
+        Locked out? Type <strong>00000</strong> as PIN to clear all data and reset.
+      </div>
     </div>
   </div>
 </div>
@@ -1386,7 +1389,17 @@ let chemAdded      = null;   // null=not set, true=yes, false=no (Full Log)
 // ─────────────────────────────────────────────────────────────
 
 function unlock(){
-  if(document.getElementById('lock-pin').value===settings.pin){
+  const entered = document.getElementById('lock-pin').value.trim();
+  // Emergency recovery: 00000 clears all data and resets to PIN 1234
+  if(entered==='00000'){
+    if(confirm('Emergency reset: wipe all data and reset PIN to 1234?')){
+      Object.keys(localStorage).filter(k=>k.startsWith('akav4_')).forEach(k=>localStorage.removeItem(k));
+      location.reload();
+    }
+    return;
+  }
+  const stored  = String(settings.pin||'1234').trim();
+  if(entered===stored){
     document.getElementById('lock-screen').style.display='none';
     document.getElementById('app').style.display='flex';
     init();
@@ -3443,17 +3456,4 @@ const QA = {
         setTimeout(()=>{ banner.style.display='none'; }, 2000);
       } else {
         // One or more golden answers wrong — stay red, don't auto-hide
-        banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#dc2626;color:#fff;';
-        msg.textContent = '🚨 MATH ERROR — ENGINE OUT OF CALIBRATION: ' + failures.join(' | ');
-      }
-
-    } catch(e) {
-      // Engine threw — black banner, stays up
-      banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#000;color:#ff0;';
-      msg.textContent = '⚠️ CRITICAL ENGINE CRASH — ' + (e.message||String(e));
-      console.error('QA crash:', e);
-    }
-  }
-};
-
-</script
+        banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-siz
