@@ -1220,7 +1220,7 @@ a{color:var(--accent);}
   <div id="ql-msg" style="display:none;font-size:12px;color:var(--red);margin-top:6px;text-align:center;"></div>
   <div class="flex gap8 mt12" style="margin-top:10px;">
     <button class="btn btn-ghost" style="flex:1;" onclick="closeSheet('quick-sheet')">Cancel</button>
-    <button class="btn btn-teal" style="flex:2;" onclick="submitQuickLog()">Save Quick Log</button>
+    <button class="btn btn-primary" style="flex:2;" onclick="submitQuickLog()">Submit &amp; Email Client</button>
   </div>
 </div>
 </div>
@@ -1244,7 +1244,7 @@ a{color:var(--accent);}
   <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="skip-notes" placeholder="Details..."></textarea></div>
   <div class="flex gap8">
     <button class="btn btn-ghost" style="flex:1;" onclick="closeSheet('skip-sheet')">Cancel</button>
-    <button class="btn btn-primary" style="flex:1;" onclick="submitSkip()">Save</button>
+    <button class="btn btn-primary" id="skip-btn" style="flex:1;" onclick="submitSkip()">Submit &amp; Email Client</button>
   </div>
 </div>
 </div>
@@ -2313,7 +2313,7 @@ async function submitQuickLog(){
 
   // Send Quick Visit email to client
   if(emailCfg.pubKey&&emailCfg.svcId&&pool&&pool.email){
-    const qlBtn=document.querySelector('#quick-sheet .btn-teal');
+    const qlBtn=document.querySelector('#quick-sheet .btn-primary');
     if(qlBtn){qlBtn.innerHTML='<span class="spinner"></span>';qlBtn.disabled=true;}
     try{
       const qlBody=buildQuickHTMLEmail(pool,log);
@@ -2335,26 +2335,52 @@ async function submitQuickLog(){
       const qlMsg=document.getElementById('ql-msg');
       if(qlMsg){qlMsg.textContent='❌ Email failed: '+errText;qlMsg.style.display='block';}
       console.warn('Quick Log email failed:',errText);
-      if(qlBtn){qlBtn.innerHTML='Save Quick Log';qlBtn.disabled=false;}
+      if(qlBtn){qlBtn.innerHTML='Submit &amp; Email Client';qlBtn.disabled=false;}
       // Stay open briefly so user can read error
       setTimeout(()=>{closeSheet('quick-sheet');renderRoute();renderDashboard();updateBadge();},4000);
       return;
     }
-    if(qlBtn){qlBtn.innerHTML='Save Quick Log';qlBtn.disabled=false;}
+    if(qlBtn){qlBtn.innerHTML='Submit &amp; Email Client';qlBtn.disabled=false;}
   }
   closeSheet('quick-sheet');renderRoute();renderDashboard();updateBadge();
 }
 
-function submitSkip(){
+async function submitSkip(){
   const poolId=document.getElementById('skip-pool-id').value;
-  logs.push({
+  const pool=pools.find(p=>p.id===poolId);
+  const log={
     id:Date.now().toString(),poolId,
     date:new Date().toISOString().split('T')[0],
     skipped:true,skipReason:document.getElementById('skip-reason').value,
     notes:document.getElementById('skip-notes').value,
     fc:null,ph:null
-  });
-  S.set('logs',logs);closeSheet('skip-sheet');renderRoute();
+  };
+  logs.push(log);S.set('logs',logs);
+  renderRoute();renderDashboard();updateBadge();
+
+  // Send skip notification email to client
+  if(emailCfg.pubKey&&emailCfg.svcId&&pool&&pool.email){
+    const btn=document.getElementById('skip-btn');
+    if(btn){btn.innerHTML='<span class="spinner"></span>';btn.disabled=true;}
+    try{
+      const skipBody=buildSkipHTMLEmail(pool,log);
+      await emailjs.send(emailCfg.svcId,emailCfg.tplId,{
+        email:pool.email,
+        to_email:pool.email,
+        to_name:pool.ownerName,
+        pool_name:pool.name,
+        address:pool.address,
+        service_date:log.date,
+        status:'Service Not Provided',
+        email_body:skipBody,
+        biz_name:settings.bizName||'akaPoolCO Pool Services'
+      },{publicKey:emailCfg.pubKey});
+    }catch(err){
+      console.warn('Skip email failed:',err.text||err.message);
+    }
+    if(btn){btn.innerHTML='Submit &amp; Email Client';btn.disabled=false;}
+  }
+  closeSheet('skip-sheet');
 }
 
 async function submitService(){
@@ -2682,6 +2708,53 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
 // ─────────────────────────────────────────────────────────────
 function toggleHistEntry(el){
   el.closest('.hist-entry').classList.toggle('open');
+}
+
+function buildSkipHTMLEmail(pool,log){
+  const reasonMap={
+    locked:'Gate locked / No access',
+    weather:'Weather conditions',
+    client:'Client request / Cancelled',
+    equipment:'Equipment issue',
+    other:'Other'
+  };
+  const reasonText=reasonMap[log.skipReason]||log.skipReason||'Not specified';
+  const serviceDate=new Date(log.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f7ff;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;padding:30px 20px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+  <tr><td style="background:#ffffff;text-align:center;padding:32px 30px 24px;border-bottom:3px solid #4a90e2;">
+    <div style="margin-bottom:8px;line-height:1;">
+    <span style="font-family:Georgia,serif;font-size:38px;color:#e53935;font-style:italic;">aka</span><span style="font-family:Arial Black,sans-serif;font-size:52px;font-weight:900;color:#1A5CC7;">Pool</span><span style="font-family:Impact,Arial Narrow,sans-serif;font-size:52px;color:#f57c00;">CO</span>
+  </div>
+    <div style="font-size:14px;color:#94a3b8;font-weight:500;">Your Neighborhood Pool Services</div>
+  </td></tr>
+  <tr><td style="padding:20px 30px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fbff;border-radius:10px;">
+      <tr>
+        <td style="padding:14px 18px;font-size:12px;color:#374151;"><strong>Client:</strong> \${pool.ownerName}</td>
+        <td style="padding:14px 18px;font-size:12px;color:#374151;text-align:center;"><strong>Date:</strong> \${serviceDate}</td>
+        <td style="padding:14px 18px;font-size:12px;color:#374151;text-align:right;"><strong>Type:</strong> Service Not Provided</td>
+      </tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:0 30px 20px;"><table width="100%" cellpadding="0" cellspacing="0">
+    <tr><td style="padding:0 0 20px;">
+      <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Reason for Non-Service</div>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 16px;">
+        <span style="font-size:13px;font-weight:700;color:#b45309;">\${reasonText}</span>
+      </div>
+    </td></tr>
+    \${log.notes?'<tr><td style="padding:0 0 20px;"><div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Notes</div><div style="background:#fdfdfd;border:1px dashed #cbd5e1;border-radius:10px;padding:14px 16px;font-style:italic;color:#64748b;font-size:13px;">&ldquo;'+log.notes+'&rdquo;</div></td></tr>':''}
+  </table></td></tr>
+  <tr><td style="border-top:1px solid #e5e7eb;padding:20px 30px;text-align:center;background:#fafafa;border-radius:0 0 18px 18px;">
+    <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:4px;">akaPoolCO Pool Services</div>
+    <div style="font-size:11px;color:#94a3b8;">Granite Bay, CA &nbsp;·&nbsp; 916.644.0416 &nbsp;·&nbsp; akapoolco.gb@gmail.com</div>
+  </td></tr>
+</table></td></tr></table>
+</body></html>`;
 }
 
 function showHistory(poolId){
