@@ -823,7 +823,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v6 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v6.4 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1324,6 +1324,16 @@ const emailjs = (function(){
 </script>
 <script>
 'use strict';
+
+// Returns YYYY-MM-DD in the device's LOCAL timezone — never UTC.
+// Use this everywhere instead of localDateStr()
+// which rolls over to tomorrow after 5 PM in Pacific time (UTC-7/UTC-8).
+function localDateStr(d){
+  const dt = d || new Date();
+  return dt.getFullYear()+'-'
+    +String(dt.getMonth()+1).padStart(2,'0')+'-'
+    +String(dt.getDate()).padStart(2,'0');
+}
 // ─────────────────────────────────────────────────────────────
 //  STORAGE
 // ─────────────────────────────────────────────────────────────
@@ -1459,7 +1469,7 @@ const ChemEngine = {
     // CYA dosing — liquid stabilizer (≈45% cyanuric acid, standard in CA)
     // 1 fl oz liquid CYA per 10,000 gal raises ≈ 0.43 ppm (i.e. ~2.3 fl oz per 1 ppm)
     // Verify against your specific product label — concentrations vary 35–65%
-    CYA_FLOZ_PER_PPM_10K:  2.3,    // fl oz of liquid stabilizer per 1 ppm rise per 10,000 gal
+    CYA_FLOZ_PER_PPM_10K:  4.0,    // fl oz of liquid stabilizer per 1 ppm rise per 10k gal (128 fl oz raises 32 ppm → 128/32 = 4.0 — TFP verified)
 
     // Demand rate / anomaly detection
     MS_PER_DAY:            864e5,  // milliseconds in one day
@@ -1647,7 +1657,7 @@ const ChemEngine = {
     if(!rates||rates.length<f.MIN_DEMAND_POINTS) return null;
     const vals     = rates.map(r=>r.rate);
     const mean     = vals.reduce((a,b)=>a+b,0)/vals.length;
-    const variance = vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length;
+    const variance = vals.reduce((a,b)=>a+(b-mean)**2,0)/(vals.length - 1); // sample variance (N-1) — correct for small samples, prevents inflated Z-scores
     const stddev   = Math.sqrt(variance);
     const latest   = vals[vals.length-1];
     const zscore   = stddev>0 ? Math.round(((latest-mean)/stddev)*100)/100 : 0;
@@ -1687,12 +1697,15 @@ const ChemEngine = {
     const csiVal    = this.csi(ph, temp, ta, ch, cya);
     const csiResult = this.csiStatus(csiVal);
 
-    // FC status label
+    // FC status label — thresholds scale with target (TFP-correct, no hardcoded cap)
+    // HIGH threshold = targetFC * 1.5 (well above ideal) or CYA * 0.4 (shock level),
+    // whichever is higher, ensuring CYA 80 pools (targetFC=10) aren't falsely flagged.
+    const fcHighThreshold = Math.max(targetFC * 1.5, (cya||0) * 0.4);
     let fcStatus = 'OK';
     if(fc!=null){
-      if(fc < 2)       fcStatus = 'CRITICAL';
-      else if(fc < 4)  fcStatus = 'LOW';
-      else if(fc > 8)  fcStatus = 'HIGH';
+      if(fc < 2)                    fcStatus = 'CRITICAL';
+      else if(fc < 4)               fcStatus = 'LOW';
+      else if(fc > fcHighThreshold) fcStatus = 'HIGH';
     }
 
     // Doses — each returns 0 if not needed or not applicable
@@ -1717,8 +1730,8 @@ const ChemEngine = {
       csiVal, csiResult, fcStatus, clDose, acidDose, phUpDose, saltDose, cyaDose,
       // CSI corrective doses
       chDose: chDose_v, bicarbDose, targetCH, targetTA,
-      // Targets + vol — returned so display layer never re-derives them independently
-      targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType
+      // Targets + vol + thresholds — single source of truth, passed to email builder
+      targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType, fcHighThreshold
     };
   }
 
@@ -2076,7 +2089,7 @@ function isPoolScheduledOn(pool, dateStr){
 // Next service due date from a given date
 function nextDueDate(pool, fromDateStr){
   if(!pool.frequency || (!pool.schedDay && pool.schedDay !== 0)) return null;
-  const from = new Date((fromDateStr || new Date().toISOString().split('T')[0]) + 'T00:00:00');
+  const from = new Date((fromDateStr || localDateStr()) + 'T00:00:00');
   // Search forward up to 60 days
   for(let i = 1; i <= 60; i++){
     const d = new Date(from.getTime() + i * 86400000);
@@ -2090,9 +2103,9 @@ function nextDueHtml(pool){
   const lastFullLog = [...logs].filter(l=>l.poolId===pool.id&&!l.skipped&&!l.isQuickVisit)
     .sort((a,b)=>b.date.localeCompare(a.date))[0];
   const fromDate = lastFullLog ? lastFullLog.date : null;
-  const next = nextDueDate(pool, fromDate || new Date().toISOString().split('T')[0]);
+  const next = nextDueDate(pool, fromDate || localDateStr());
   if(!next) return '';
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   const daysUntil = Math.round((new Date(next+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
   if(daysUntil < 0) return `<div class="next-due overdue">Overdue ${Math.abs(daysUntil)}d</div>`;
   if(daysUntil === 0) return `<div class="next-due soon">Due today</div>`;
@@ -2153,7 +2166,7 @@ function renderRoute(){
   if(!pools.length){
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">🏊</div><div class="fw800">No pools yet</div><div class="text-sm text-muted mt8" style="margin-top:8px;">Go to Pools tab to add your first pool</div></div>`;return;
   }
-  const today=new Date().toISOString().split('T')[0];
+  const today=localDateStr();
   el.innerHTML=pools.map(pool=>{
     const s=poolStatus(pool.id);
     const lastLog=logs.filter(l=>l.poolId===pool.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
@@ -2304,7 +2317,7 @@ async function submitQuickLog(){
   const work=[...document.querySelectorAll('#ql-work-chips input:checked')].map(c=>c.value);
   const log={
     id:Date.now().toString(),poolId,
-    date:new Date().toISOString().split('T')[0],
+    date:localDateStr(),
     isQuickVisit:true,otos:otoSelected||'not-done',
     work,notes,skipped:false,
     fc:null,ph:null,tc:null,cc:null,ta:null,ch:null,cya:null,salt:null,temp:null
@@ -2350,7 +2363,7 @@ async function submitSkip(){
   const pool=pools.find(p=>p.id===poolId);
   const log={
     id:Date.now().toString(),poolId,
-    date:new Date().toISOString().split('T')[0],
+    date:localDateStr(),
     skipped:true,skipReason:document.getElementById('skip-reason').value,
     notes:document.getElementById('skip-notes').value,
     fc:null,ph:null
@@ -2398,14 +2411,14 @@ async function submitService(){
   const clAdd=g('s-cl-add')||0,acidAdd=g('s-acid-add')||0;
   const work=[...document.querySelectorAll('#work-chips input:checked')].map(c=>c.value);
 
-  const log={id:Date.now().toString(),poolId,date:new Date().toISOString().split('T')[0],
+  const log={id:Date.now().toString(),poolId,date:localDateStr(),
     isQuickVisit:false,fc,tc,cc,ph,ta,ch,cya,salt,temp,clAdded:clAdd,acidAdded:acidAdd,work,notes,chemicalsAdded:chemAdded,skipped:false};
   logs.push(log);S.set('logs',logs);
 
   // All dosing math in one call — ChemEngine.calcAll() is the single source of truth
   const {csiVal:csi, csiResult:cs, fcStatus,
          clDose, acidDose, phUpDose, saltDose, cyaDose,
-         chDose, bicarbDose} =
+         chDose, bicarbDose, fcHighThreshold} =
     ChemEngine.calcAll(pool, {fc,tc,cc,ph,ta,ch,cya,salt,temp},
                        settings.clStrength, settings.minDose);
 
@@ -2424,7 +2437,7 @@ async function submitService(){
     btn.innerHTML='<span class="spinner"></span> Sending...';btn.disabled=true;
     try{
       // buildHTMLEmail inside try so any rendering error is caught and shown
-      const clientBody=buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,notesInReport);
+      const clientBody=buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,notesInReport,fcHighThreshold);
       // Pass publicKey directly — self-contained, no dependency on emailjs.init() state
       await emailjs.send(emailCfg.svcId,emailCfg.tplId,{
         email:pool.email,
@@ -2511,7 +2524,7 @@ function buildQuickHTMLEmail(pool,log){
 </body></html>`;
 }
 
-function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,includeNotes){
+function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,includeNotes,fcHighThreshold){
   const {fc,tc,cc,ph,ta,ch,cya,salt,temp,work,notes,clAdded,acidAdded}=log;
 
   // ── CSI status colours ──
@@ -2617,10 +2630,10 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
         </tr>
         ${[
           {lbl:'Free Chlorine (FC)', val:fc, unit:'ppm', target:pool.targetFC||6,
-           ok:fc!=null&&fc>=(pool.targetFC||6)*0.8&&fc<8,
-           warn:fc!=null&&(fc<2||fc>8),
+           ok:fc!=null&&fc>=(pool.targetFC||6)*0.8&&fc<=fcHighThreshold,
+           warn:fc!=null&&(fc<2||fc>fcHighThreshold),
            // clDose already computed by ChemEngine.calcAll() in submitService — reuse it
-           action: fc!=null&&fc<2?'CRITICAL':clDose>0?`Add ${clDose} oz`:fc!=null&&fc>8?'High — do not add':'OK'},
+           action: fc!=null&&fc<2?'CRITICAL':clDose>0?`Add ${clDose} oz`:fc!=null&&fc>fcHighThreshold?'High — do not add':'OK'},
           {lbl:'pH', val:ph, unit:'', target:pool.targetPH||7.4,
            ok:ph!=null&&ph>=7.2&&ph<=7.8, warn:ph!=null&&(ph<7.0||ph>8.0),
            // acidDose already computed by ChemEngine.calcAll() in submitService — reuse it
@@ -2986,7 +2999,7 @@ function renderMonth(){
   const y=calDate.getFullYear(),m=calDate.getMonth();
   document.getElementById('cal-title').textContent=new Date(y,m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
   const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
-  const today=new Date().toISOString().split('T')[0];
+  const today=localDateStr();
   let h=`<div class="cal-grid">`;
   ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d=>h+=`<div class="cal-dn">${d}</div>`);
   for(let i=0;i<first;i++){const d=new Date(y,m,i-first+1);const ds2=d.toISOString().split('T')[0];const ps=getPoolsForDate(ds2);h+=`<div class="cal-day other-m" onclick="showDayDetail('${ds2}')"><div class="cal-day-n">${d.getDate()}</div>${ps.length?`<div class="cal-dot"></div><div class="cal-cnt">${ps.length}</div>`:''}</div>`;}
@@ -3288,7 +3301,7 @@ async function sendTestEmail(){
       to_name:'akaPoolCO Test',
       pool_name:'Test Pool',
       address:'123 Test St',
-      service_date:new Date().toISOString().split('T')[0],
+      service_date:localDateStr(),
       status:'OK',
       email_body:`This is a test email from akaPoolCO Pool Services.
 
@@ -3359,7 +3372,7 @@ function exportData(){
   const d={pools,inventory,logs,settings,emailCfg,exportedAt:new Date().toISOString()};
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));
-  a.download='poolpro-backup-'+new Date().toISOString().split('T')[0]+'.json';a.click();
+  a.download='poolpro-backup-'+localDateStr()+'.json';a.click();
 }
 function importData(e){
   const fr=new FileReader();
