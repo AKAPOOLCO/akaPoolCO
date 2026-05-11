@@ -748,7 +748,15 @@ a{color:var(--accent);}
 
       <div class="setting-card">
         <div class="setting-head">🗄️ Data Backup &amp; Reset</div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">☁️ Google Drive Backup URL</label>
+          <input class="form-input" id="gdrive-url" placeholder="Paste Apps Script Web App URL" style="font-size:11px;">
+          <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Auto-syncs after logs (once per 24h). Leave blank to disable.</div>
+        </div>
+        <button class="btn btn-ghost btn-full" style="margin-bottom:6px;" onclick="saveGDriveUrl()">💾 Save Drive URL</button>
+        <div id="backup-status-msg" style="font-size:11px;text-align:center;margin-bottom:10px;color:var(--muted);">Not yet synced.</div>
         <button class="btn btn-ghost btn-full mb8" style="margin-bottom:8px;" onclick="exportData()">📤 Export JSON</button>
+        <div id="last-export-msg" style="font-size:11px;text-align:center;margin-bottom:8px;color:var(--muted);"></div>
         <button class="btn btn-ghost btn-full" onclick="document.getElementById('import-file').click()">📥 Import JSON</button>
         <button class="btn btn-full" style="margin-top:8px;background:var(--red);color:#fff;font-size:12px;" onclick="hardReset()">🗑️ Clear All Data &amp; Reset</button>
         <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(event)">
@@ -823,7 +831,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v6.6 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v7.3 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1013,6 +1021,10 @@ a{color:var(--accent);}
 
   <div class="form-group"><label class="form-label">Notes / Gate Code</label><textarea class="form-textarea" id="p-notes" placeholder="Gate code, dog in yard, etc."></textarea></div>
 
+  <div class="form-group" style="display:flex;align-items:center;gap:12px;padding:4px 0;">
+    <input type="checkbox" id="p-active" checked style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;">
+    <label for="p-active" class="form-label" style="margin:0;cursor:pointer;">Active — include in Route tab</label>
+  </div>
   <div class="flex gap8 mt16" style="margin-top:14px;">
     <button class="btn btn-ghost" style="flex:1;" onclick="closeSheet('pool-sheet')">Cancel</button>
     <button class="btn btn-primary" style="flex:1;" onclick="savePool()">Save Pool</button>
@@ -1254,6 +1266,7 @@ a{color:var(--accent);}
 <div class="sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-title" id="hist-title">History</div>
+  <div id="hist-pool-notes" style="padding:0 4px;display:none;"></div>
   <div id="hist-content"></div>
 </div>
 </div>
@@ -1380,7 +1393,7 @@ function init(){
   const now=new Date();
   document.getElementById('hdr-date').textContent=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   document.getElementById('route-sub').textContent=now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  loadEmailFields();loadDefaultFields();
+  loadEmailFields();loadDefaultFields();renderLastExport();renderBackupStatus();
   if(emailCfg.pubKey)try{emailjs.init({publicKey:emailCfg.pubKey});}catch{}
   renderRoute();updateBadge();
 }
@@ -1447,13 +1460,6 @@ const ChemEngine = {
       chlorine: { summer: { ratio: 0.10, offset: 2, min: 3 }, winter: { ratio: 0.07, offset: 1, min: 3 } },
       swg:      { summer: { ratio: 0.075, offset: 0, min: 5 }, winter: { ratio: 0.05,  offset: 0, min: 3 } }
     },
-
-    // Acid dosing — 31.45% muriatic acid
-    ACID_PH_STEP:          0.2,    // pH units per dose step
-    ACID_OZ_PER_STEP_10K:  12,     // oz acid to drop pH by 0.2 in 10,000 gal
-
-    // pH Up dosing — soda ash (sodium carbonate, also called pH Increaser)
-    SODA_ASH_OZ_PER_STEP_10K: 6,   // oz soda ash to raise pH by 0.2 in 10,000 gal
 
     // Calcium hardness dosing — calcium chloride (77–80% granular)
     CH_PPM_PER_LB_10K:     8,      // 1 lb calcium chloride raises CH ~8 ppm per 10,000 gal
@@ -2124,9 +2130,15 @@ function isPoolScheduledOn(pool, dateStr){
 function nextDueDate(pool, fromDateStr){
   if(!pool.frequency || (!pool.schedDay && pool.schedDay !== 0)) return null;
   const from = new Date((fromDateStr || localDateStr()) + 'T00:00:00');
-  // Search forward up to 60 days
-  for(let i = 1; i <= 60; i++){
-    const d = new Date(from.getTime() + i * 86400000);
+  // Piece 6: early-service cooldown — prevent a freshly-serviced pool from immediately
+  // showing as due again on its normal schedule day.
+  let minDays = 1;
+  if(pool.frequency === 'weekly')   minDays = 4;
+  if(pool.frequency === 'biweekly') minDays = 10;
+  if(pool.frequency === 'monthly')  minDays = 20;
+  // Search forward starting AFTER the cooldown period
+  for(let i = minDays; i <= 60; i++){
+    const d  = new Date(from.getTime() + i * 86400000);
     const ds = d.toISOString().split('T')[0];
     if(isPoolScheduledOn(pool, ds)) return ds;
   }
@@ -2197,31 +2209,39 @@ function setProfileWork(arr){
 // ─────────────────────────────────────────────────────────────
 function renderRoute(){
   const el=document.getElementById('route-list');
-  if(!pools.length){
-    el.innerHTML=`<div class="empty-state"><div class="empty-icon">🏊</div><div class="fw800">No pools yet</div><div class="text-sm text-muted mt8" style="margin-top:8px;">Go to Pools tab to add your first pool</div></div>`;return;
-  }
   const today=localDateStr();
-  el.innerHTML=pools.map(pool=>{
+  // Piece 1: only render pools where isActive !== false
+  const activePools = pools.filter(p => p.isActive !== false);
+  if(!activePools.length){
+    el.innerHTML=`<div class="empty-state"><div class="empty-icon">🏊</div><div class="fw800">${pools.length?'No active pools on route':'No pools yet'}</div><div class="text-sm text-muted mt8" style="margin-top:8px;">${pools.length?'Enable pools in the <strong>Dashboard</strong> tab or add pools in the <strong>Pools</strong> tab':'Go to Pools tab to add your first pool'}</div></div>`;
+    return;
+  }
+  // Piece 1: split active pools into Pending and Completed Today
+  const pending   = activePools.filter(p=>{ const ll=logs.filter(l=>l.poolId===p.id).sort((a,b)=>b.date.localeCompare(a.date))[0]; return !ll||ll.date!==today; });
+  const completed = activePools.filter(p=>{ const ll=logs.filter(l=>l.poolId===p.id).sort((a,b)=>b.date.localeCompare(a.date))[0]; return ll&&ll.date===today; });
+
+  function cardHtml(pool, isDone){
     const s=poolStatus(pool.id);
     const lastLog=logs.filter(l=>l.poolId===pool.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
-    const doneToday=lastLog&&lastLog.date===today;
     const trend=getTrend(pool.id,'fc');
     const demandAlert=getDemandAnalysis(pool.id);
     const highDemand=demandAlert&&demandAlert.anomaly;
-    return`<div class="pool-card${false?' expanded':''}" id="pc-${pool.id}" draggable="true"
-        ondragstart="dragStart(event,'${pool.id}')" ondragover="dragOver(event)" ondrop="dragDrop(event,'${pool.id}')" ondragend="dragEnd()">
+    // Piece 4: only pending cards are draggable
+    const dragAttrs = isDone ? '' : `draggable="true" ondragstart="dragStart(event,'${pool.id}')" ondragover="dragOver(event)" ondrop="dragDrop(event,'${pool.id}','pending')" ondragend="dragEnd()"`;
+    const dimStyle  = isDone ? 'opacity:0.6;' : '';
+    return`<div class="pool-card" id="pc-${pool.id}" ${dragAttrs} style="${dimStyle}">
       <div class="pool-status-bar" style="background:${statusBarColor(s)};"></div>
       <div class="pool-header" onclick="toggleCard('${pool.id}')">
-        <div class="drag-handle" title="Drag to reorder">
+        ${!isDone?`<div class="drag-handle" title="Drag to reorder">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
-        </div>
+        </div>`:'<div style="width:28px;flex-shrink:0;"></div>'}
         <div class="pool-meta">
           <div class="pool-name">${pool.name}${pool.isSWG?` <span class="badge b-teal" style="font-size:9px;">SWG</span>`:''} ${pool.poolType&&pool.poolType!=='plaster'?` <span class="badge b-gray" style="font-size:9px;">${pool.poolType}</span>`:''} ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}</div>
           <div class="pool-owner">${pool.ownerName||'—'} · ${pool.phone||'—'}</div>
           ${nextDueHtml(pool)}
         </div>
         <div class="pool-right">
-          ${doneToday
+          ${lastLog&&lastLog.date===today
             ? `<span class="badge ${lastLog.isQuickVisit?'b-teal':'b-green'}" style="font-size:10px;">${lastLog.isQuickVisit?'⚡ Quick':'✓ Done'}</span>`
             : lastLog
               ? `<span style="font-size:10.5px;font-family:var(--mono);color:var(--muted);">${lastLog.date}</span>`
@@ -2234,9 +2254,9 @@ function renderRoute(){
           <div class="info-row"><span class="info-lbl">Address</span><span class="info-val"><a href="https://maps.google.com?q=${encodeURIComponent(pool.address||'')}" target="_blank">${pool.address||'—'}</a></span></div>
           <div class="info-row"><span class="info-lbl">Phone</span><span class="info-val"><a href="tel:${pool.phone}">${pool.phone||'—'}</a></span></div>
           <div class="info-row"><span class="info-lbl">Volume</span><span class="info-val">${pool.volume||'?'} gal · ${pool.frequency||'—'}</span></div>
-          ${pool.notes?`<div class="info-row"><span class="info-lbl">Notes</span><span class="info-val" style="font-size:12px;">${pool.notes}</span></div>`:''}
           ${lastLog&&!lastLog.skipped&&!lastLog.isQuickVisit&&(lastLog.fc||lastLog.ph)?`<div class="info-row"><span class="info-lbl">Last</span><span class="info-val mono" style="font-size:12px;">FC ${lastLog.fc||'—'} · pH ${lastLog.ph||'—'} · ${lastLog.date}</span></div>`:''}
         </div>
+        ${pool.notes?`<div style="margin:0 14px 10px;padding:9px 12px;background:var(--accent-soft,#EFF6FF);border-left:3px solid var(--accent);border-radius:6px;font-size:12px;color:var(--text);line-height:1.4;"><span style="font-weight:700;font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;">&#128204; Notes</span><br>${pool.notes}</div>`:''}
         <div class="pool-actions">
           <button class="btn btn-primary btn-sm" onclick="openService('${pool.id}')">🧪 Full Log</button>
           <button class="btn btn-teal btn-sm" onclick="openQuickLog('${pool.id}')">⚡ Quick</button>
@@ -2248,7 +2268,17 @@ function renderRoute(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  }
+
+  let html = '';
+  if(pending.length){
+    html += pending.map(p=>cardHtml(p,false)).join('');
+  }
+  if(completed.length){
+    html += `<div style="margin:14px 0 6px;padding:6px 12px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;border-top:1px solid var(--border);">✓ Completed Today (${completed.length})</div>`;
+    html += completed.map(p=>cardHtml(p,true)).join('');
+  }
+  el.innerHTML = html;
 }
 
 function toggleCard(id){
@@ -2262,13 +2292,22 @@ function toggleCard(id){
   if(!open){body.style.display='block';card.classList.add('expanded');}
 }
 
-// DRAG & DROP
+// Piece 4: drag-and-drop scoped to pending pools only
 let dragId=null;
 function dragStart(e,id){dragId=id;e.dataTransfer.effectAllowed='move';}
 function dragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';}
 function dragEnd(){dragId=null;}
-function dragDrop(e,targetId){
-  e.preventDefault();if(!dragId||dragId===targetId)return;
+function dragDrop(e,targetId,section){
+  e.preventDefault();
+  if(!dragId||dragId===targetId) return;
+  if(section!=='pending') return; // Piece 4: no reordering in Completed section
+  const today=localDateStr();
+  // Only allow reorder within the pending subset
+  const isPendingId = id => {
+    const ll=logs.filter(l=>l.poolId===id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+    return !ll||ll.date!==today;
+  };
+  if(!isPendingId(dragId)||!isPendingId(targetId)) return;
   const fi=pools.findIndex(p=>p.id===dragId),ti=pools.findIndex(p=>p.id===targetId);
   const [m]=pools.splice(fi,1);pools.splice(ti,0,m);
   S.set('pools',pools);renderRoute();
@@ -2357,6 +2396,7 @@ async function submitQuickLog(){
     fc:null,ph:null,tc:null,cc:null,ta:null,ch:null,cya:null,salt:null,temp:null
   };
   logs.push(log);S.set('logs',logs);
+  triggerCloudBackup(); // Piece 5 — async, non-blocking
 
   // Send Quick Visit email to client
   if(emailCfg.pubKey&&emailCfg.svcId&&pool&&pool.email){
@@ -2403,6 +2443,7 @@ async function submitSkip(){
     fc:null,ph:null
   };
   logs.push(log);S.set('logs',logs);
+  triggerCloudBackup();
   renderRoute();renderDashboard();updateBadge();
 
   // Send skip notification email to client
@@ -2448,6 +2489,7 @@ async function submitService(){
   const log={id:Date.now().toString(),poolId,date:localDateStr(),
     isQuickVisit:false,fc,tc,cc,ph,ta,ch,cya,salt,temp,clAdded:clAdd,acidAdded:acidAdd,work,notes,chemicalsAdded:chemAdded,skipped:false};
   logs.push(log);S.set('logs',logs);
+  triggerCloudBackup();
 
   // All dosing math in one call — ChemEngine.calcAll() is the single source of truth
   const {csiVal:csi, csiResult:cs, fcStatus,
@@ -2813,6 +2855,18 @@ function showHistory(poolId){
   const pool=pools.find(p=>p.id===poolId);
   document.getElementById('hist-title').textContent=`History — ${pool.name}`;
 
+  // Pool profile notes banner — shows standing notes at top of history for quick context
+  const notesEl = document.getElementById('hist-pool-notes');
+  if(notesEl){
+    if(pool.notes){
+      notesEl.innerHTML = `<div style="background:var(--accent-soft,#EFF6FF);border-left:3px solid var(--accent);border-radius:6px;padding:9px 12px;margin:0 0 12px;font-size:12px;color:var(--text);">
+        <span style="font-weight:700;color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Pool Notes</span><br>${pool.notes}</div>`;
+      notesEl.style.display='block';
+    } else {
+      notesEl.style.display='none';
+    }
+  }
+
   // 90-day window — display only, does not delete logs (old logs still used for Z-score)
   const cutoff=new Date();cutoff.setDate(cutoff.getDate()-90);
   const cutStr=cutoff.toISOString().split('T')[0];
@@ -2977,41 +3031,94 @@ function setFreq(f){
   renderDashboard();
 }
 function renderDashboard(){
+  const today=localDateStr();
   const getLL=id=>[...logs].filter(l=>l.poolId===id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+  const getLastFull=id=>[...logs].filter(l=>l.poolId===id&&!l.skipped&&!l.isQuickVisit).sort((a,b)=>b.date.localeCompare(a.date))[0];
   const sOrder={red:0,yellow:1,teal:2,gray:3,green:4};
+
+  // Piece 2&3: compute next-due and overdue for each pool
+  function getOverdue(pool){
+    const lastFull=getLastFull(pool.id);
+    const next=nextDueDate(pool, lastFull?lastFull.date:null);
+    if(!next) return {next:null,daysOverdue:null};
+    const daysOverdue=Math.round((new Date(today+'T00:00:00')-new Date(next+'T00:00:00'))/86400000);
+    return {next, daysOverdue};
+  }
+
   let filtered=pools.filter(p=>freqFilter==='all'||p.frequency===freqFilter);
-  if(sortMode==='date')filtered.sort((a,b)=>{const la=getLL(a.id),lb=getLL(b.id);return(la?.date||'0').localeCompare(lb?.date||'0');});
-  else if(sortMode==='status')filtered.sort((a,b)=>sOrder[poolStatus(a.id)]-sOrder[poolStatus(b.id)]);
-  // freq sort removed — use filter tabs instead
+
+  if(sortMode==='date'){
+    // Piece 3: overdue pools at top sorted by daysOverdue descending, then by last-log date
+    filtered.sort((a,b)=>{
+      const oa=getOverdue(a), ob=getOverdue(b);
+      const overdueA=oa.daysOverdue!==null&&oa.daysOverdue>0?oa.daysOverdue:-999;
+      const overdueB=ob.daysOverdue!==null&&ob.daysOverdue>0?ob.daysOverdue:-999;
+      if(overdueA!==overdueB) return overdueB-overdueA; // most overdue first
+      const la=getLL(a.id),lb=getLL(b.id);
+      return(la?.date||'0').localeCompare(lb?.date||'0');
+    });
+  } else if(sortMode==='status'){
+    filtered.sort((a,b)=>sOrder[poolStatus(a.id)]-sOrder[poolStatus(b.id)]);
+  }
+
   const fLabel={weekly:'W',biweekly:'B',monthly:'M'};
   document.getElementById('dash-list').innerHTML=filtered.length?filtered.map(pool=>{
     const last=getLL(pool.id);const s=poolStatus(pool.id);const trend=getTrend(pool.id,'fc');
     const demand=getDemandAnalysis(pool.id);
     const highDemand=demand&&demand.anomaly;
-    return`<div class="dash-row" onclick="goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
-      <div class="sdot sdot-${s}"></div>
-      <div style="flex:1;min-width:0;">
-        <div class="flex items-center gap8" style="flex-wrap:wrap;row-gap:3px;">
-          <div class="dash-name">${pool.name}</div>
-          <span class="badge b-gray" style="font-size:9px;">${fLabel[pool.frequency]||'?'}</span>
-          ${pool.isSWG?`<span class="badge b-teal" style="font-size:9px;">SWG</span>`:''}
-          ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}
-          ${trend?`<span style="font-size:11px;">${trendHtml(trend,'fc')}</span>`:''}
+    const {next, daysOverdue}=getOverdue(pool);
+    // Piece 2: next-due display
+    let nextDueBadge='';
+    if(next){
+      if(daysOverdue>0)
+        nextDueBadge=`<span class="badge" style="background:#FEE2E2;color:#DC2626;font-size:9px;margin-left:2px;">⚠️ Overdue ${daysOverdue}d</span>`;
+      else if(daysOverdue===0)
+        nextDueBadge=`<span class="badge b-yellow" style="font-size:9px;margin-left:2px;">Due today</span>`;
+    }
+    // isActive toggle — Piece 1
+    const active=pool.isActive!==false;
+    const activeToggle=`<button class="route-toggle ${active?'on':''}" onclick="event.stopPropagation();togglePoolActive('${pool.id}')" title="${active?'Remove from Route':'Add to Route'}" style="flex-shrink:0;padding:3px 8px;font-size:11px;border-radius:12px;border:1.5px solid ${active?'var(--green)':'var(--border)'};background:${active?'#D1FAE5':'transparent'};color:${active?'var(--green)':'var(--muted)'};cursor:pointer;font-weight:700;">${active?'● Route':'○ Off'}</button>`;
+
+    return`<div class="dash-row" style="${active?'':'opacity:0.55;'}">
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;" onclick="if(active)goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
+        <div class="sdot sdot-${s}"></div>
+        <div style="flex:1;min-width:0;">
+          <div class="flex items-center gap8" style="flex-wrap:wrap;row-gap:3px;">
+            <div class="dash-name">${pool.name}</div>
+            <span class="badge b-gray" style="font-size:9px;">${fLabel[pool.frequency]||'?'}</span>
+            ${pool.isSWG?`<span class="badge b-teal" style="font-size:9px;">SWG</span>`:''}
+            ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}
+            ${nextDueBadge}
+            ${trend?`<span style="font-size:11px;">${trendHtml(trend,'fc')}</span>`:''}
+          </div>
+          <div class="text-xs text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pool.ownerName||''} · ${pool.address||''}</div>
+          ${pool.notes?`<div class="text-xs" style="color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;font-size:10.5px;">&#128204; ${pool.notes}</div>`:''}
+          ${next&&daysOverdue<=0?`<div style="font-size:10.5px;color:var(--muted);margin-top:1px;">Next: ${next}</div>`:''}
         </div>
-        <div class="text-xs text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pool.ownerName||''} · ${pool.address||''}</div>
       </div>
-      <div style="text-align:right;flex-shrink:0;">
+      <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+        ${activeToggle}
         ${last&&!last.skipped?`<div class="dash-readings">
           ${!last.isQuickVisit&&last.fc!=null?`<span class="rchip">FC ${last.fc}</span>`:''}
           ${!last.isQuickVisit&&last.ph!=null?`<span class="rchip">pH ${last.ph}</span>`:''}
           ${last.isQuickVisit?`<span class="rchip" style="color:var(--swg);">⚡ OTO</span>`:''}
         </div>`:``}
         <div class="dash-date">${last?last.date:'No log'}</div>
-        ${last&&last.isQuickVisit?`<div class="quick-visit-tag">quick visit</div>`:''}
+        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;" onclick="event.stopPropagation();showHistory('${pool.id}')">📋 History</button>
       </div>
     </div>`;
   }).join(''):`<div class="empty-state"><div>No pools to show</div></div>`;
 }
+
+function togglePoolActive(poolId){
+  const p=pools.find(q=>q.id===poolId);
+  if(!p) return;
+  p.isActive = p.isActive===false ? true : false;
+  S.set('pools',pools);
+  renderDashboard();
+  renderRoute();
+}
+
 
 // ─────────────────────────────────────────────────────────────
 //  PAGE 3 — CALENDAR
@@ -3212,6 +3319,7 @@ function editPool(idx){
   document.getElementById('p-season').value=ps;
   document.getElementById('ps-summer').classList.toggle('active',ps==='summer');
   document.getElementById('ps-winter').classList.toggle('active',ps==='winter');
+  document.getElementById('p-active').checked = p.isActive !== false;
   document.getElementById('pool-del-wrap').style.display='block';
   openSheet('pool-sheet');
 }
@@ -3296,7 +3404,8 @@ function savePool(){
     saltTarget:parseFloat(document.getElementById('p-salt').value)||3200,
     swgBrand:document.getElementById('p-swg-brand').value,
     notes:document.getElementById('p-notes').value.trim(),
-    defaultWork:getProfileWork()
+    defaultWork:getProfileWork(),
+    isActive:document.getElementById('p-active').checked
   };
   if(!pool.name)return;
   if(idxEl!=='')pools[parseInt(idxEl)]=pool;else pools.push(pool);
@@ -3359,6 +3468,8 @@ function loadEmailFields(){
   document.getElementById('ejs-tpl').value=emailCfg.tplId||'';
   document.getElementById('ejs-key').value=emailCfg.pubKey||'';
   document.getElementById('biz-name').value=settings.bizName||'akaPoolCO Pool Services';
+
+  const guEl=document.getElementById('gdrive-url');if(guEl)guEl.value=settings.gDriveUrl||'';
 }
 function saveDefaults(){
   settings.minDose=parseFloat(document.getElementById('min-dose').value)||4;
@@ -3402,12 +3513,53 @@ function updateBadge(){
 // ─────────────────────────────────────────────────────────────
 //  EXPORT / IMPORT
 // ─────────────────────────────────────────────────────────────
+// ── Piece 5: Google Drive cloud backup ─────────────────────────────────────
+// Fire-and-forget async POST to a Google Apps Script Web App.
+// Never blocks the UI; silently swallows network errors (offline-first).
+async function triggerCloudBackup(){
+  const url = settings.gDriveUrl;
+  if(!url) return; // not configured — skip silently
+  const lastBackup = parseInt(localStorage.getItem('akav4_lastBackup')||'0');
+  const twentyFourH = 24 * 60 * 60 * 1000;
+  if(Date.now() - lastBackup < twentyFourH) return; // backed up within 24h
+  try{
+    const payload = JSON.stringify({pools,inventory,logs,settings,emailCfg,backedUpAt:new Date().toISOString()});
+    await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:payload});
+    localStorage.setItem('akav4_lastBackup', String(Date.now()));
+    renderBackupStatus();
+  } catch(e){ /* offline or network error — fail silently */ }
+}
+
+function renderBackupStatus(){
+  const el = document.getElementById('backup-status-msg');
+  if(!el) return;
+  const ts = parseInt(localStorage.getItem('akav4_lastBackup')||'0');
+  el.textContent = ts ? 'Last cloud sync: ' + new Date(ts).toLocaleString() : 'Not yet synced.';
+  el.style.color  = ts ? 'var(--green)' : 'var(--muted)';
+}
+
 function exportData(){
   const d={pools,inventory,logs,settings,emailCfg,exportedAt:new Date().toISOString()};
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));
   a.download='poolpro-backup-'+localDateStr()+'.json';a.click();
+  localStorage.setItem('akav4_lastExport', localDateStr());
+  renderLastExport();
 }
+function saveGDriveUrl(){
+  settings.gDriveUrl = document.getElementById('gdrive-url').value.trim();
+  S.set('settings', settings);
+  showMsg('settings-msg','Drive URL saved','g');
+}
+
+function renderLastExport(){
+  const el = document.getElementById('last-export-msg');
+  if(!el) return;
+  const d = localStorage.getItem('akav4_lastExport');
+  el.textContent = d ? 'Last exported: ' + d : 'Not yet exported — back up your data!';
+  el.style.color  = d ? 'var(--green)' : 'var(--red)';
+}
+
 function importData(e){
   const fr=new FileReader();
   fr.onload=ev=>{
@@ -3488,6 +3640,24 @@ const QA = {
                saltTarget:null, targetCYA:40 },
       r:    { fc:3, ph:7.2, ta:80, ch:225, cya:40, salt:null, temp:55 },
       expect: { csiVal:-0.70, clDose:19, fcStatus:'LOW' }
+    },
+    {
+      // Acid dose — high pH liquid pool (ΔpH 0.4, TA 80, CYA 50, 10k gal)
+      // Expected: 20 oz muriatic acid. Validates nonlinear acid model + adjTA correction.
+      name: 'Acid Dose High pH Liquid',
+      pool: { volume:10000, isSWG:false, targetFC:7, targetPH:7.4,
+               saltTarget:null, targetCYA:50 },
+      r:    { fc:7, ph:7.8, ta:80, ch:250, cya:50, salt:null, temp:80 },
+      expect: { acidDose:20 }
+    },
+    {
+      // Acid dose — high pH SWG pool (ΔpH 0.6, TA 100, CYA 70, 15k gal)
+      // Expected: 58 oz muriatic acid. Validates dose scaling with volume + higher TA.
+      name: 'Acid Dose High pH SWG',
+      pool: { volume:15000, isSWG:true,  targetFC:5, targetPH:7.4,
+               saltTarget:3200, targetCYA:70 },
+      r:    { fc:5, ph:8.0, ta:100, ch:350, cya:70, salt:3200, temp:82 },
+      expect: { acidDose:58 }
     }
   ],
 
@@ -3509,17 +3679,24 @@ const QA = {
                                      QA_CL_STRENGTH,
                                      QA_MIN_DOSE);
 
-        const csiOk  = R.csiVal !== null &&
-                       Math.abs(R.csiVal - test.expect.csiVal) <= MARGIN;
-        const doseOk = R.clDose === test.expect.clDose;
-        const fcOk   = R.fcStatus === test.expect.fcStatus;
+                // Core chemistry checks (only assert fields present in expect)
+        const hasCsi  = 'csiVal'   in test.expect;
+        const hasDose = 'clDose'   in test.expect;
+        const hasFc   = 'fcStatus' in test.expect;
+        const hasAcid = 'acidDose' in test.expect;
 
-        if(!csiOk || !doseOk || !fcOk){
+        const csiOk   = !hasCsi  || (R.csiVal !== null && Math.abs(R.csiVal - test.expect.csiVal) <= MARGIN);
+        const doseOk  = !hasDose || R.clDose   === test.expect.clDose;
+        const fcOk    = !hasFc   || R.fcStatus === test.expect.fcStatus;
+        const acidOk  = !hasAcid || R.acidDose === test.expect.acidDose;
+
+        if(!csiOk || !doseOk || !fcOk || !acidOk){
           failures.push(
             `${test.name}: ` +
             (!csiOk  ? `CSI got ${R.csiVal} exp ${test.expect.csiVal} ` : '') +
-            (!doseOk ? `dose got ${R.clDose} exp ${test.expect.clDose} ` : '') +
-            (!fcOk   ? `fcStatus got ${R.fcStatus} exp ${test.expect.fcStatus}` : '')
+            (!doseOk ? `clDose got ${R.clDose} exp ${test.expect.clDose} ` : '') +
+            (!fcOk   ? `fcStatus got ${R.fcStatus} exp ${test.expect.fcStatus} ` : '') +
+            (!acidOk ? `acidDose got ${R.acidDose} exp ${test.expect.acidDose}` : '')
           );
         }
       });
@@ -3527,7 +3704,7 @@ const QA = {
       if(failures.length === 0){
         // All golden scenarios pass — flash green then hide
         banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#059669;color:#fff;';
-        msg.textContent = '✓ ENGINE CALIBRATED — all 3 golden scenarios match TFP standards';
+        msg.textContent = '✓ ENGINE CALIBRATED — all 5 golden scenarios match TFP standards';
         setTimeout(()=>{ banner.style.display='none'; }, 2000);
       } else {
         // One or more golden answers wrong — stay red, don't auto-hide
