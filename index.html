@@ -3852,4 +3852,13 @@ const QA = {
 
     } catch(e) {
       // Engine threw — black banner, stays up
-      banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#000;
+      banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#000;color:#ff0;';
+      msg.textContent = '⚠️ CRITICAL ENGINE CRASH — ' + (e.message||String(e));
+      console.error('QA crash:', e);
+    }
+  }
+};
+
+</script>
+</body>
+</html>
