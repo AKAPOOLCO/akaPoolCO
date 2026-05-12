@@ -431,46 +431,47 @@ a{color:var(--accent);}
 /* ─────────────────────────────────────────
    DASHBOARD
 ───────────────────────────────────────── */
-/* ── v8.2 Dashboard triage layout ──────────────────────────────── */
+/* ── v8.3 Dashboard Diagnostic Matrix ─────────────────────────── */
 .dash-row{
-  display:flex;align-items:flex-start;gap:9px;
-  padding:10px 12px;background:var(--surface);
-  border:1.5px solid var(--border);border-radius:var(--r);
-  margin-bottom:6px;cursor:pointer;transition:background .12s;
+  display:block;
+  padding:9px 12px;background:var(--surface);
+  border:1px solid var(--border);border-left-width:3px;
+  border-radius:var(--r);margin-bottom:6px;
+  cursor:pointer;transition:background .12s;
 }
 .dash-row:active{background:var(--surface2);}
-.dash-left{flex:1;min-width:0;}
-.dash-name-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;row-gap:2px;}
-.dash-name{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
-.dash-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
-.dash-notes{font-size:10.5px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
-.dash-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:100px;}
-.dash-readings{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;}
-.rchip{font-size:11px;font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--text);white-space:nowrap;}
-.dash-trends{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;}
-.d-trend{font-size:10px;font-family:var(--mono);font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap;}
-.d-trend-fc-up{background:var(--green-lt);color:var(--green);border:1px solid var(--green-bd);}
-.d-trend-fc-dn{background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-bd);}
-.d-trend-ph-up{background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-bd);}
-.d-trend-ph-dn{background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-bd);}
-.dash-schedule{font-size:10.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap;}
-.dash-actions{display:flex;gap:5px;align-items:center;margin-top:1px;}
-.route-pill{
-  display:inline-flex;align-items:center;height:26px;padding:0 9px;
-  font-size:11px;font-weight:700;border-radius:13px;
-  border:1.5px solid;cursor:pointer;white-space:nowrap;
+.dash-grid{
+  display:grid;grid-template-columns:35% 30% 35%;
+  gap:5px 4px;
+}
+.dg-c1{text-align:left;min-width:0;overflow:hidden;}
+.dg-c2{text-align:center;min-width:0;}
+.dg-c3{text-align:right;min-width:0;overflow:hidden;}
+.dg-name{font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.25;}
+.dg-reading{font-size:12px;font-family:var(--mono);font-weight:700;white-space:nowrap;line-height:1.35;}
+.dg-meta{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+.dg-dim{color:var(--hint);}
+.dg-notes{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:1.3;}
+.dt-fc-up{color:var(--green);font-weight:800;}
+.dt-fc-dn{color:var(--orange);font-weight:800;}
+.dt-ph-up{color:var(--orange);font-weight:800;}
+.dt-ph-dn{color:var(--blue);font-weight:800;}
+.dg-hist-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:28px;padding:0 9px;font-size:11px;
+  border-radius:14px;border:1.5px solid var(--border);
+  background:transparent;color:var(--muted);cursor:pointer;
+  white-space:nowrap;transition:background .12s;font-family:var(--font);
+}
+.dg-hist-btn:active{background:var(--surface2);}
+.dg-route-btn{
+  display:inline-flex;align-items:center;height:28px;padding:0 9px;
+  font-size:11px;font-weight:700;border-radius:14px;border:1.5px solid;
+  cursor:pointer;white-space:nowrap;font-family:var(--font);
   transition:background .15s,color .15s,border-color .15s;
 }
-.route-pill.on{background:#D1FAE5;color:var(--green);border-color:var(--green);}
-.route-pill.off{background:transparent;color:var(--muted);border-color:var(--border);}
-.hist-pill{
-  display:inline-flex;align-items:center;height:26px;padding:0 8px;
-  font-size:12px;border-radius:13px;border:1.5px solid var(--border);
-  background:transparent;color:var(--muted);cursor:pointer;
-  transition:background .12s;
-}
-.hist-pill:active{background:var(--surface2);}
-.dash-date{font-size:10.5px;color:var(--muted);font-family:var(--mono);}
+.dg-route-btn.on{background:#D1FAE5;color:var(--green);border-color:var(--green);}
+.dg-route-btn.off{background:transparent;color:var(--muted);border-color:var(--border);}
 
 /* CSI badge inline */
 .csi-badge{
@@ -905,7 +906,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v8.2 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v8.3 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -3104,22 +3105,14 @@ function setFreq(f){
   document.querySelectorAll('#freq-tabs .ftab').forEach((b,i)=>b.classList.toggle('active',['all','weekly','biweekly','monthly'][i]===f));
   renderDashboard();
 }
-// ── v8.2: Contextual trend label — paired with metric, color-coded by meaning ──
+// ── v8.3: Inline trend arrow — sits directly after the metric value ──
 function dashTrendHtml(field, trend){
   if(!trend || trend === 'stable') return '';
   const up = trend === 'up';
-  if(field === 'fc'){
-    // ↑ FC = good (green), ↓ FC = watch (orange)
-    return up
-      ? `<span class="d-trend d-trend-fc-up" title="Free Chlorine trending up">↑ FC</span>`
-      : `<span class="d-trend d-trend-fc-dn" title="Free Chlorine trending down">↓ FC</span>`;
-  }
-  if(field === 'ph'){
-    // ↑ pH = drifting high / need acid (orange), ↓ pH = dropping / need soda ash (blue)
-    return up
-      ? `<span class="d-trend d-trend-ph-up" title="pH trending up — may need acid">↑ pH</span>`
-      : `<span class="d-trend d-trend-ph-dn" title="pH trending down — may need soda ash">↓ pH</span>`;
-  }
+  if(field === 'fc')
+    return up ? `<span class="dt-fc-up">↑</span>` : `<span class="dt-fc-dn">↓</span>`;
+  if(field === 'ph')
+    return up ? `<span class="dt-ph-up">↑</span>` : `<span class="dt-ph-dn">↓</span>`;
   return '';
 }
 
@@ -3152,79 +3145,126 @@ function renderDashboard(){
     filtered.sort((a,b)=>sOrder[poolStatus(a.id)]-sOrder[poolStatus(b.id)]);
   }
 
-  const fLabel={weekly:'W',biweekly:'B',monthly:'M'};
+  // CSI level → compact label for the grid cell
+  const CSI_SHORT={
+    nodata:'—', balanced:'Balanced', low_corrosive:'Sl. Corr.',
+    corrosive:'Corrosive', low_scaling:'Sl. Scale', scaling:'Scaling'
+  };
+  const ptShort={plaster:'Plaster',vinyl:'Vinyl',fiberglass:'Glass'};
+
   document.getElementById('dash-list').innerHTML=filtered.length?filtered.map(pool=>{
-    const last       = getLL(pool.id);
-    const s          = poolStatus(pool.id);
-    const fcTrend    = getTrend(pool.id,'fc');
-    const phTrend    = getTrend(pool.id,'ph');
-    const demand     = getDemandAnalysis(pool.id);
+    const lastFull = getLastFull(pool.id);
+    const lastAny  = getLL(pool.id);
+    const s        = poolStatus(pool.id);
+    const fcTrend  = getTrend(pool.id,'fc');
+    const phTrend  = getTrend(pool.id,'ph');
+    const demand   = getDemandAnalysis(pool.id);
     const highDemand = demand&&demand.anomaly;
     const {next, daysOverdue} = getOverdue(pool);
-    const active     = pool.isActive!==false;
+    const active   = pool.isActive!==false;
 
-    // ── Primary readings (right column top) ────────────────────
-    const readingsHtml = last&&!last.skipped
-      ? `<div class="dash-readings">
-          ${!last.isQuickVisit&&last.fc!=null?`<span class="rchip">FC ${last.fc}</span>`:''}
-          ${!last.isQuickVisit&&last.ph!=null?`<span class="rchip">pH ${last.ph}</span>`:''}
-          ${last.isQuickVisit?`<span class="rchip" style="color:var(--swg);">⚡ OTO</span>`:''}
-        </div>`
-      : '';
+    // ── Latest full-log readings for ChemEngine call ────────────
+    const r = lastFull
+      ? {fc:lastFull.fc,  tc:lastFull.tc,  cc:lastFull.cc,  ph:lastFull.ph,
+         ta:lastFull.ta,  ch:lastFull.ch,  cya:lastFull.cya,
+         salt:lastFull.salt, temp:lastFull.temp}
+      : {fc:null,tc:null,cc:null,ph:null,ta:null,ch:null,cya:null,salt:null,temp:null};
 
-    // ── Contextual trend labels (only non-stable, only if data) ─
-    const fcT = dashTrendHtml('fc', fcTrend);
-    const phT = dashTrendHtml('ph', phTrend);
-    const trendsHtml = (fcT||phT)
-      ? `<div class="dash-trends">${fcT}${phT}</div>` : '';
+    // ── CSI — same ChemEngine call as the service form ──────────
+    const R       = ChemEngine.calcAll(pool, r, settings.clStrength, settings.minDose);
+    const cs      = csiStatusFull(R.csiVal);
+    const csiNum  = R.csiVal!==null ? (R.csiVal>=0?'+':'')+R.csiVal : '—';
+    const csiShort= CSI_SHORT[cs.level]||'—';
 
-    // ── Schedule: overdue badge OR muted next-due date ──────────
-    let scheduleHtml = '';
+    // ── Row 1 — FC reading with inline arrow ────────────────────
+    const fcArrow = dashTrendHtml('fc', fcTrend);
+    const fcText  = r.fc!=null ? `FC ${r.fc}${fcArrow?' ':''}${fcArrow}` : 'FC —';
+
+    // ── Row 2 — pH reading with inline arrow ────────────────────
+    const phArrow = dashTrendHtml('ph', phTrend);
+    const phText  = r.ph!=null ? `pH ${r.ph}${phArrow?' ':''}${phArrow}` : 'pH —';
+    const taTemp  = [
+      r.ta!=null   ? r.ta+' ppm'  : null,
+      r.temp!=null ? r.temp+'°F'  : null
+    ].filter(Boolean).join(' | ') || '—';
+
+    // ── Row 3 — schedule cell ───────────────────────────────────
+    let schedHtml;
     if(next){
       if(daysOverdue>0)
-        scheduleHtml=`<span class="badge" style="background:#FEE2E2;color:#DC2626;font-size:9px;">⚠️ ${daysOverdue}d overdue</span>`;
+        schedHtml=`<span class="badge b-red" style="font-size:9px;padding:2px 5px;">⚠️ ${daysOverdue}d over</span>`;
       else if(daysOverdue===0)
-        scheduleHtml=`<span class="badge b-yellow" style="font-size:9px;">Due today</span>`;
+        schedHtml=`<span class="badge b-yellow" style="font-size:9px;padding:2px 5px;">Due today</span>`;
       else
-        scheduleHtml=`<span class="dash-schedule">Next ${next}</span>`;
+        schedHtml=`<span class="dg-meta">Due ${next}</span>`;
     } else {
-      scheduleHtml = last
-        ? `<span class="dash-schedule">${last.date}</span>`
-        : `<span class="dash-schedule" style="color:var(--hint);">No log</span>`;
+      schedHtml = lastAny
+        ? `<span class="dg-meta">${lastAny.date}</span>`
+        : `<span class="dg-meta" style="color:var(--hint);">No log</span>`;
     }
 
-    // ── Route pill toggle ───────────────────────────────────────
-    const routePill=`<button class="route-pill ${active?'on':'off'}"
-      onclick="event.stopPropagation();togglePoolActive('${pool.id}')"
-      title="${active?'On route — tap to remove':'Off route — tap to add'}"
-    >${active?'● Route':'○ Off'}</button>`;
+    // ── Row 3 — CYA + optional Salt (SWG only) ─────────────────
+    const cyaSalt = [
+      r.cya!=null ? `CYA ${r.cya}` : 'CYA —',
+      pool.isSWG&&r.salt!=null ? `Salt ${r.salt}` : null
+    ].filter(Boolean).join(' · ');
 
-    // ── History pill ────────────────────────────────────────────
-    const histPill=`<button class="hist-pill"
-      onclick="event.stopPropagation();showHistory('${pool.id}')"
-      title="View history">📋</button>`;
+    // ── Status accent on left border ────────────────────────────
+    const borderColor  = statusBarColor(s);
+    const inactiveCSS  = active ? '' : 'opacity:0.55;filter:grayscale(1);';
 
-    // ── Row assembly ────────────────────────────────────────────
-    return`<div class="dash-row" style="${active?'':'opacity:0.5;filter:grayscale(0.4);'}" onclick="goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
-      <div class="sdot sdot-${s}" style="margin-top:4px;"></div>
-      <div class="dash-left">
-        <div class="dash-name-row">
-          <div class="dash-name">${pool.name}</div>
-          <span class="badge b-gray" style="font-size:9px;">${fLabel[pool.frequency]||'?'}</span>
-          ${pool.isSWG?`<span class="badge b-teal" style="font-size:9px;">SWG</span>`:''}
-          ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚡ High Demand</span>`:''}
+    return`<div class="dash-row" style="border-left-color:${borderColor};${inactiveCSS}"
+        onclick="goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
+      <div class="dash-grid">
+
+        <!-- ROW 1: Name + demand | FC + arrow | Target FC -->
+        <div class="dg-c1">
+          <div class="dg-name">${pool.name}</div>
+          ${highDemand?`<span class="badge b-red" style="font-size:9px;padding:1px 5px;">⚡ Demand</span>`:''}
         </div>
-        <div class="dash-sub">${pool.ownerName||''}${pool.address?` · ${pool.address}`:''}</div>
-        ${pool.notes?`<div class="dash-notes">📌 ${pool.notes}</div>`:''}
-      </div>
-      <div class="dash-right">
-        ${readingsHtml}
-        ${trendsHtml}
-        ${scheduleHtml}
-        <div class="dash-actions">
-          ${routePill}
-          ${histPill}
+        <div class="dg-c2">
+          <span class="dg-reading${r.fc==null?' dg-dim':''}">${fcText}</span>
         </div>
+        <div class="dg-c3">
+          <span class="dg-meta">Tgt FC ${pool.targetFC||6}</span>
+        </div>
+
+        <!-- ROW 2: Sanitizer·type | pH + arrow | TA·Temp -->
+        <div class="dg-c1">
+          <span class="dg-meta">${pool.isSWG?'SWG':'Liquid Cl'} · ${ptShort[pool.poolType||'plaster']}</span>
+        </div>
+        <div class="dg-c2">
+          <span class="dg-reading${r.ph==null?' dg-dim':''}">${phText}</span>
+        </div>
+        <div class="dg-c3">
+          <span class="dg-meta">TA/T ${taTemp}</span>
+        </div>
+
+        <!-- ROW 3: Schedule | CYA(·Salt) | CSI badge·label -->
+        <div class="dg-c1">${schedHtml}</div>
+        <div class="dg-c2">
+          <span class="dg-reading" style="font-size:11px;">${cyaSalt}</span>
+        </div>
+        <div class="dg-c3">
+          <span class="badge ${cs.cls}" style="font-size:9px;padding:2px 5px;">${csiNum}</span>
+          <div class="dg-meta" style="margin-top:1px;">${csiShort}</div>
+        </div>
+
+        <!-- ROW 4: Notes | History btn | Route toggle -->
+        <div class="dg-c1">
+          <span class="dg-notes">${pool.notes||'—'}</span>
+        </div>
+        <div class="dg-c2">
+          <button class="dg-hist-btn"
+            onclick="event.stopPropagation();showHistory('${pool.id}')"
+          >📋 History</button>
+        </div>
+        <div class="dg-c3">
+          <button class="dg-route-btn ${active?'on':'off'}"
+            onclick="event.stopPropagation();togglePoolActive('${pool.id}')"
+          >${active?'● Route':'○ Off'}</button>
+        </div>
+
       </div>
     </div>`;
   }).join(''):`<div class="empty-state"><div>No pools to show</div></div>`;
