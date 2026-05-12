@@ -757,6 +757,7 @@ a{color:var(--accent);}
           <input class="form-input" id="gdrive-url" placeholder="Paste Apps Script Web App URL" style="font-size:11px;">
         </div>
         <button class="btn btn-ghost btn-full" style="margin-bottom:6px;" onclick="saveGDriveUrl()">💾 Save Drive URL</button>
+        <div id="settings-msg" style="font-size:12px;text-align:center;display:none;margin-bottom:4px;"></div>
         <div id="backup-status-msg" style="font-size:11px;text-align:center;margin-bottom:10px;color:var(--muted);">Not yet synced.</div>
         <div style="display:flex;gap:6px;margin-bottom:8px;">
           <button class="btn btn-ghost" style="flex:1;font-size:11px;" onclick="pushToCloud()">⬆ Push</button>
@@ -1408,6 +1409,7 @@ function init(){
 
 function showMsg(id,txt,t){
   const el=document.getElementById(id);
+  if(!el) return; // guard — never crash on missing element
   el.textContent=txt;el.style.color=t==='g'?'var(--green)':'var(--red)';
   el.style.display='block';setTimeout(()=>el.style.display='none',3000);
 }
@@ -3850,13 +3852,4 @@ const QA = {
 
     } catch(e) {
       // Engine threw — black banner, stays up
-      banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#000;color:#ff0;';
-      msg.textContent = '⚠️ CRITICAL ENGINE CRASH — ' + (e.message||String(e));
-      console.error('QA crash:', e);
-    }
-  }
-};
-
-</script>
-</body>
-</html>
+      banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#000;
