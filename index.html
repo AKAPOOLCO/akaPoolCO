@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1923">
 <title>akaPoolCO Pool Services v5</title>
-<link href="https://fonts.googleapis.com/css2?family=Baguet+Script&family=Figtree:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Google Fonts removed: system fonts used instead for offline-first PWA -->
 <style>
 /* ─────────────────────────────────────────
    RESET & TOKENS
@@ -59,8 +59,8 @@
   --r:10px;--r2:16px;--r3:22px;
   --shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);
   --shadow2:0 4px 20px rgba(0,0,0,.10);
-  --font:'Figtree',sans-serif;
-  --mono:'IBM Plex Mono',monospace;
+  --font:-apple-system, BlinkMacSystemFont, 'Figtree', 'Segoe UI', system-ui, sans-serif,sans-serif;
+  --mono:'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace,monospace;
 }
 
 html,body{
@@ -616,7 +616,7 @@ a{color:var(--accent);}
      Hidden until calcDosing() fires — flashes green 2s if healthy,
      stays red/black if engine math is broken or crashed.
 ══════════════════════════════════════════ -->
-<div id="qa-banner" style="display:none;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:bold;transition:all 0.3s ease;">
+<div id="qa-banner" style="display:none;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace,monospace;font-size:12px;font-weight:bold;transition:all 0.3s ease;">
   <span id="qa-message"></span>
 </div>
 
@@ -3090,7 +3090,7 @@ function renderDashboard(){
     const activeToggle=`<button class="route-toggle ${active?'on':''}" onclick="event.stopPropagation();togglePoolActive('${pool.id}')" title="${active?'Remove from Route':'Add to Route'}" style="flex-shrink:0;padding:3px 8px;font-size:11px;border-radius:12px;border:1.5px solid ${active?'var(--green)':'var(--border)'};background:${active?'#D1FAE5':'transparent'};color:${active?'var(--green)':'var(--muted)'};cursor:pointer;font-weight:700;">${active?'● Route':'○ Off'}</button>`;
 
     return`<div class="dash-row" style="${active?'':'opacity:0.55;'}">
-      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;" onclick="if(active)goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;" onclick=onclick="goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
         <div class="sdot sdot-${s}"></div>
         <div style="flex:1;min-width:0;">
           <div class="flex items-center gap8" style="flex-wrap:wrap;row-gap:3px;">
