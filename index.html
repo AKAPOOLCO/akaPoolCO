@@ -604,6 +604,9 @@ a{color:var(--accent);}
 .mb8{margin-bottom:8px;}.mb12{margin-bottom:12px;}
 .flex{display:flex;}.items-center{align-items:center;}.justify-between{justify-content:space-between;}.gap8{gap:8px;}.gap6{gap:6px;}
 .fw700{font-weight:700;}.fw800{font-weight:800;}
+
+/* v7.4 sync indicator */
+#sync-indicator{transition:color .3s;user-select:none;font-family:var(--mono);font-size:12px;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -629,6 +632,7 @@ a{color:var(--accent);}
       <div class="hdr-title">akaPoolCO</div>
     </div>
     <div class="hdr-right">
+      <span id="sync-indicator" onclick="onSyncIndicatorTap()" style="font-size:12px;cursor:pointer;margin-right:4px;color:var(--muted);font-family:var(--mono);" title="Cloud sync — tap to sync">☁️</span>
       <span id="alert-badge" class="hdr-badge" style="display:none;"></span>
       <div class="hdr-sub" id="hdr-date"></div>
     </div>
@@ -749,12 +753,15 @@ a{color:var(--accent);}
       <div class="setting-card">
         <div class="setting-head">🗄️ Data Backup &amp; Reset</div>
         <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">☁️ Google Drive Backup URL</label>
+          <label class="form-label">☁️ Cloud Sync Server URL</label>
           <input class="form-input" id="gdrive-url" placeholder="Paste Apps Script Web App URL" style="font-size:11px;">
-          <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Auto-syncs after logs (once per 24h). Leave blank to disable.</div>
         </div>
         <button class="btn btn-ghost btn-full" style="margin-bottom:6px;" onclick="saveGDriveUrl()">💾 Save Drive URL</button>
         <div id="backup-status-msg" style="font-size:11px;text-align:center;margin-bottom:10px;color:var(--muted);">Not yet synced.</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <button class="btn btn-ghost" style="flex:1;font-size:11px;" onclick="pushToCloud()">⬆ Push</button>
+          <button class="btn btn-ghost" style="flex:1;font-size:11px;" onclick="pullFromCloud()">⬇ Pull</button>
+        </div>
         <button class="btn btn-ghost btn-full mb8" style="margin-bottom:8px;" onclick="exportData()">📤 Export JSON</button>
         <div id="last-export-msg" style="font-size:11px;text-align:center;margin-bottom:8px;color:var(--muted);"></div>
         <button class="btn btn-ghost btn-full" onclick="document.getElementById('import-file').click()">📥 Import JSON</button>
@@ -831,7 +838,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v7.3 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v8 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1352,7 +1359,7 @@ function localDateStr(d){
 // ─────────────────────────────────────────────────────────────
 const S={
   get:k=>{try{return JSON.parse(localStorage.getItem('akav4_'+k));}catch{return null;}},
-  set:(k,v)=>localStorage.setItem('akav4_'+k,JSON.stringify(v))
+  set:(k,v)=>{localStorage.setItem('akav4_'+k,JSON.stringify(v));localStorage.setItem('akav4_lastChanged',String(Date.now()));}
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -1396,6 +1403,7 @@ function init(){
   loadEmailFields();loadDefaultFields();renderLastExport();renderBackupStatus();
   if(emailCfg.pubKey)try{emailjs.init({publicKey:emailCfg.pubKey});}catch{}
   renderRoute();updateBadge();
+  setTimeout(checkCloudSync, 0); // non-blocking: renders UI first, then checks cloud
 }
 
 function showMsg(id,txt,t){
@@ -3523,11 +3531,139 @@ async function triggerCloudBackup(){
   const twentyFourH = 24 * 60 * 60 * 1000;
   if(Date.now() - lastBackup < twentyFourH) return; // backed up within 24h
   try{
-    const payload = JSON.stringify({pools,inventory,logs,settings,emailCfg,backedUpAt:new Date().toISOString()});
+    const payload = JSON.stringify({pools,inventory,logs,settings,emailCfg,lastChanged:parseInt(localStorage.getItem('akav4_lastChanged')||'0'),backedUpAt:new Date().toISOString()});
     await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:payload});
     localStorage.setItem('akav4_lastBackup', String(Date.now()));
     renderBackupStatus();
   } catch(e){ /* offline or network error — fail silently */ }
+}
+
+// ── v7.4: Pull-to-Sync Hybrid ──────────────────────────────────────────────
+// 4-state indicator: grey=unknown, green=synced, teal=local ahead, orange=cloud ahead
+
+const SYNC_STATES = {
+  UNKNOWN:  {icon:'☁️',  color:'var(--muted)',   title:'Checking cloud sync…'},
+  SYNCED:   {icon:'✓☁',  color:'var(--green)',   title:'In sync with cloud'},
+  LOCAL_AHEAD:{icon:'↑☁', color:'var(--swg)',    title:'Local is newer — tap to push to cloud'},
+  CLOUD_AHEAD:{icon:'↓☁', color:'#f97316',       title:'Cloud is newer — tap to pull updates'},
+};
+
+function setSyncIndicator(state){
+  const el = document.getElementById('sync-indicator');
+  if(!el) return;
+  const s = SYNC_STATES[state] || SYNC_STATES.UNKNOWN;
+  el.textContent  = s.icon;
+  el.style.color  = s.color;
+  el.title        = s.title;
+  el.dataset.state = state;
+}
+
+async function checkCloudSync(){
+  const url = settings.gDriveUrl;
+  if(!url){ setSyncIndicator('SYNCED'); return; } // no URL = local only, show synced
+  setSyncIndicator('UNKNOWN');
+  try{
+    const res  = await fetch(url, {method:'GET'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const cloud = await res.json();
+    const cloudTs = parseInt(cloud.lastChanged || '0');
+    const localTs = parseInt(localStorage.getItem('akav4_lastChanged') || '0');
+    if(cloudTs === localTs || (cloudTs === 0 && localTs === 0)){
+      setSyncIndicator('SYNCED');
+    } else if(localTs >= cloudTs){
+      setSyncIndicator('LOCAL_AHEAD');
+    } else {
+      setSyncIndicator('CLOUD_AHEAD');
+    }
+  } catch(e){
+    setSyncIndicator('UNKNOWN'); // offline or cold-start timeout — fail silently
+  }
+}
+
+async function pushToCloud(){
+  const url = settings.gDriveUrl;
+  if(!url){ alert('No Drive URL set in Settings.'); return; }
+  setSyncIndicator('UNKNOWN');
+  try{
+    const payload = JSON.stringify({
+      pools, inventory, logs, settings, emailCfg,
+      lastChanged: parseInt(localStorage.getItem('akav4_lastChanged')||'0'),
+      pushedAt: new Date().toISOString()
+    });
+    const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:payload});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    localStorage.setItem('akav4_lastBackup', String(Date.now()));
+    renderBackupStatus();
+    setSyncIndicator('SYNCED');
+  } catch(e){
+    setSyncIndicator('LOCAL_AHEAD');
+    alert('Push failed — check your network and Drive URL in Settings.');
+  }
+}
+
+async function pullFromCloud(){
+  const url = settings.gDriveUrl;
+  if(!url){ alert('No Drive URL set in Settings.'); return; }
+  setSyncIndicator('UNKNOWN');
+  try{
+    const res   = await fetch(url, {method:'GET'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const cloud = await res.json();
+    if(!cloud.pools){ throw new Error('No pool data in response'); }
+
+    // Build the diff prompt — count records so user knows what they'd lose
+    const localPools = pools.length;
+    const localLogs  = logs.length;
+    const cloudPools = (cloud.pools||[]).length;
+    const cloudLogs  = (cloud.logs||[]).length;
+    const cloudDate  = cloud.pushedAt
+      ? new Date(cloud.pushedAt).toLocaleString()
+      : 'unknown date';
+
+    const losing = localLogs > cloudLogs
+      ? `⚠️ This will replace your ${localLogs - cloudLogs} newer local logs.`
+      : localLogs < cloudLogs
+      ? `✓ You will gain ${cloudLogs - localLogs} logs from the cloud.`
+      : `Record counts match (${localLogs} logs each).`;
+
+    const msg =
+      `☁️ Cloud data (synced ${cloudDate})\n` +
+      `Cloud:  ${cloudPools} pools · ${cloudLogs} logs\n` +
+      `Local:  ${localPools} pools · ${localLogs} logs\n\n` +
+      losing + '\n\n' +
+      `Pull and overwrite local data?`;
+
+    if(!confirm(msg)) { await checkCloudSync(); return; }
+
+    // Overwrite local state
+    pools     = cloud.pools     || [];
+    inventory = cloud.inventory || [];
+    logs      = cloud.logs      || [];
+    if(cloud.settings)  settings  = cloud.settings;
+    if(cloud.emailCfg)  emailCfg  = cloud.emailCfg;
+    S.set('pools',pools); S.set('inv',inventory); S.set('logs',logs);
+    S.set('settings',settings); S.set('email',emailCfg);
+
+    // Stamp local timestamp to match cloud so next check shows SYNCED
+    const cloudTs = parseInt(cloud.lastChanged || String(Date.now()));
+    localStorage.setItem('akav4_lastChanged', String(cloudTs));
+
+    init(); // re-render everything
+    setSyncIndicator('SYNCED');
+    localStorage.setItem('akav4_lastBackup', String(Date.now()));
+    renderBackupStatus();
+  } catch(e){
+    setSyncIndicator('CLOUD_AHEAD');
+    alert('Pull failed: ' + (e.message||String(e)));
+  }
+}
+
+function onSyncIndicatorTap(){
+  const el = document.getElementById('sync-indicator');
+  const state = el ? el.dataset.state : 'UNKNOWN';
+  if(state === 'LOCAL_AHEAD') pushToCloud();
+  else if(state === 'CLOUD_AHEAD') pullFromCloud();
+  else checkCloudSync(); // UNKNOWN or SYNCED — re-check
 }
 
 function renderBackupStatus(){
