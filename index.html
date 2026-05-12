@@ -6,8 +6,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1923">
-<title>akaPoolCO Pool Services v5</title>
-<!-- Google Fonts removed: system fonts used instead for offline-first PWA -->
+<title>akaPoolCO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap"></noscript>
 <style>
 /* ─────────────────────────────────────────
    RESET & TOKENS
@@ -59,8 +61,8 @@
   --r:10px;--r2:16px;--r3:22px;
   --shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);
   --shadow2:0 4px 20px rgba(0,0,0,.10);
-  --font:-apple-system, BlinkMacSystemFont, 'Figtree', 'Segoe UI', system-ui, sans-serif,sans-serif;
-  --mono:'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace,monospace;
+  --font:'Figtree', system-ui, -apple-system, sans-serif;
+  --mono:'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 html,body{
@@ -429,6 +431,70 @@ a{color:var(--accent);}
 /* ─────────────────────────────────────────
    DASHBOARD
 ───────────────────────────────────────── */
+/* ── v8.2 Dashboard triage layout ──────────────────────────────── */
+.dash-row{
+  display:flex;align-items:flex-start;gap:9px;
+  padding:10px 12px;background:var(--surface);
+  border:1.5px solid var(--border);border-radius:var(--r);
+  margin-bottom:6px;cursor:pointer;transition:background .12s;
+}
+.dash-row:active{background:var(--surface2);}
+.dash-left{flex:1;min-width:0;}
+.dash-name-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;row-gap:2px;}
+.dash-name{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+.dash-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.dash-notes{font-size:10.5px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.dash-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:100px;}
+.dash-readings{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;}
+.rchip{font-size:11px;font-family:var(--mono);background:var(--surface2);padding:2px 6px;border-radius:5px;color:var(--text);white-space:nowrap;}
+.dash-trends{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;}
+.d-trend{font-size:10px;font-family:var(--mono);font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap;}
+.d-trend-fc-up{background:var(--green-lt);color:var(--green);border:1px solid var(--green-bd);}
+.d-trend-fc-dn{background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-bd);}
+.d-trend-ph-up{background:var(--orange-lt);color:var(--orange);border:1px solid var(--orange-bd);}
+.d-trend-ph-dn{background:var(--blue-lt);color:var(--blue);border:1px solid var(--blue-bd);}
+.dash-schedule{font-size:10.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap;}
+.dash-actions{display:flex;gap:5px;align-items:center;margin-top:1px;}
+.route-pill{
+  display:inline-flex;align-items:center;height:26px;padding:0 9px;
+  font-size:11px;font-weight:700;border-radius:13px;
+  border:1.5px solid;cursor:pointer;white-space:nowrap;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.route-pill.on{background:#D1FAE5;color:var(--green);border-color:var(--green);}
+.route-pill.off{background:transparent;color:var(--muted);border-color:var(--border);}
+.hist-pill{
+  display:inline-flex;align-items:center;height:26px;padding:0 8px;
+  font-size:12px;border-radius:13px;border:1.5px solid var(--border);
+  background:transparent;color:var(--muted);cursor:pointer;
+  transition:background .12s;
+}
+.hist-pill:active{background:var(--surface2);}
+.dash-date{font-size:10.5px;color:var(--muted);font-family:var(--mono);}
+
+/* CSI badge inline */
+.csi-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;
+  font-family:var(--mono);border:1px solid transparent;
+}
+
+/* ─────────────────────────────────────────
+   WORK CHIPS
+───────────────────────────────────────── */
+.work-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.work-chip{
+  display:flex;align-items:center;gap:5px;
+  background:var(--surface);border:1.5px solid var(--border);
+  border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .15s;color:var(--muted);
+}
+.work-chip.selected{background:var(--blue-lt);border-color:var(--blue-bd);color:var(--blue);}
+.work-chip input{display:none;}
+
+/* ─────────────────────────────────────────
+   DASHBOARD
+───────────────────────────────────────── */
 .dash-row{
   display:flex;align-items:center;gap:10px;
   padding:11px 13px;background:var(--surface);
@@ -616,7 +682,7 @@ a{color:var(--accent);}
      Hidden until calcDosing() fires — flashes green 2s if healthy,
      stays red/black if engine math is broken or crashed.
 ══════════════════════════════════════════ -->
-<div id="qa-banner" style="display:none;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace,monospace;font-size:12px;font-weight:bold;transition:all 0.3s ease;">
+<div id="qa-banner" style="display:none;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;font-size:12px;font-weight:bold;transition:all 0.3s ease;">
   <span id="qa-message"></span>
 </div>
 
@@ -839,7 +905,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v8 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v8.2 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1828,14 +1894,12 @@ const getDemandAnalysis   = (pid)       => ChemEngine.demandAnalysis(getDemandRa
 
 function trendHtml(trend,field){
   if(!trend)return'';
-  if(trend==='stable')return`<span class="trend-chip trend-st">→ stable</span>`;
-  if(trend==='up')    return`<span class="trend-chip trend-up">↑ rising</span>`;
-  return                    `<span class="trend-chip trend-dn">↓ dropping</span>`;
+  const lbl=field?field.toUpperCase():'';
+  if(trend==='stable')return`<span class="trend-chip trend-st">→ ${lbl} stable</span>`;
+  if(trend==='up')    return`<span class="trend-chip trend-up">↑ ${lbl} rising</span>`;
+  return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
-// ─────────────────────────────────────────────────────────────
-//  AUTO-CALCULATE COMBINED CHLORINE  (CC = TC - FC)
-// ─────────────────────────────────────────────────────────────
 function calcCC(){
   const fcEl=document.getElementById('s-fc');
   const tcEl=document.getElementById('s-tc');
@@ -3040,13 +3104,31 @@ function setFreq(f){
   document.querySelectorAll('#freq-tabs .ftab').forEach((b,i)=>b.classList.toggle('active',['all','weekly','biweekly','monthly'][i]===f));
   renderDashboard();
 }
+// ── v8.2: Contextual trend label — paired with metric, color-coded by meaning ──
+function dashTrendHtml(field, trend){
+  if(!trend || trend === 'stable') return '';
+  const up = trend === 'up';
+  if(field === 'fc'){
+    // ↑ FC = good (green), ↓ FC = watch (orange)
+    return up
+      ? `<span class="d-trend d-trend-fc-up" title="Free Chlorine trending up">↑ FC</span>`
+      : `<span class="d-trend d-trend-fc-dn" title="Free Chlorine trending down">↓ FC</span>`;
+  }
+  if(field === 'ph'){
+    // ↑ pH = drifting high / need acid (orange), ↓ pH = dropping / need soda ash (blue)
+    return up
+      ? `<span class="d-trend d-trend-ph-up" title="pH trending up — may need acid">↑ pH</span>`
+      : `<span class="d-trend d-trend-ph-dn" title="pH trending down — may need soda ash">↓ pH</span>`;
+  }
+  return '';
+}
+
 function renderDashboard(){
   const today=localDateStr();
   const getLL=id=>[...logs].filter(l=>l.poolId===id).sort((a,b)=>b.date.localeCompare(a.date))[0];
   const getLastFull=id=>[...logs].filter(l=>l.poolId===id&&!l.skipped&&!l.isQuickVisit).sort((a,b)=>b.date.localeCompare(a.date))[0];
   const sOrder={red:0,yellow:1,teal:2,gray:3,green:4};
 
-  // Piece 2&3: compute next-due and overdue for each pool
   function getOverdue(pool){
     const lastFull=getLastFull(pool.id);
     const next=nextDueDate(pool, lastFull?lastFull.date:null);
@@ -3058,12 +3140,11 @@ function renderDashboard(){
   let filtered=pools.filter(p=>freqFilter==='all'||p.frequency===freqFilter);
 
   if(sortMode==='date'){
-    // Piece 3: overdue pools at top sorted by daysOverdue descending, then by last-log date
     filtered.sort((a,b)=>{
       const oa=getOverdue(a), ob=getOverdue(b);
       const overdueA=oa.daysOverdue!==null&&oa.daysOverdue>0?oa.daysOverdue:-999;
       const overdueB=ob.daysOverdue!==null&&ob.daysOverdue>0?ob.daysOverdue:-999;
-      if(overdueA!==overdueB) return overdueB-overdueA; // most overdue first
+      if(overdueA!==overdueB) return overdueB-overdueA;
       const la=getLL(a.id),lb=getLL(b.id);
       return(la?.date||'0').localeCompare(lb?.date||'0');
     });
@@ -3073,48 +3154,77 @@ function renderDashboard(){
 
   const fLabel={weekly:'W',biweekly:'B',monthly:'M'};
   document.getElementById('dash-list').innerHTML=filtered.length?filtered.map(pool=>{
-    const last=getLL(pool.id);const s=poolStatus(pool.id);const trend=getTrend(pool.id,'fc');
-    const demand=getDemandAnalysis(pool.id);
-    const highDemand=demand&&demand.anomaly;
-    const {next, daysOverdue}=getOverdue(pool);
-    // Piece 2: next-due display
-    let nextDueBadge='';
-    if(next){
-      if(daysOverdue>0)
-        nextDueBadge=`<span class="badge" style="background:#FEE2E2;color:#DC2626;font-size:9px;margin-left:2px;">⚠️ Overdue ${daysOverdue}d</span>`;
-      else if(daysOverdue===0)
-        nextDueBadge=`<span class="badge b-yellow" style="font-size:9px;margin-left:2px;">Due today</span>`;
-    }
-    // isActive toggle — Piece 1
-    const active=pool.isActive!==false;
-    const activeToggle=`<button class="route-toggle ${active?'on':''}" onclick="event.stopPropagation();togglePoolActive('${pool.id}')" title="${active?'Remove from Route':'Add to Route'}" style="flex-shrink:0;padding:3px 8px;font-size:11px;border-radius:12px;border:1.5px solid ${active?'var(--green)':'var(--border)'};background:${active?'#D1FAE5':'transparent'};color:${active?'var(--green)':'var(--muted)'};cursor:pointer;font-weight:700;">${active?'● Route':'○ Off'}</button>`;
+    const last       = getLL(pool.id);
+    const s          = poolStatus(pool.id);
+    const fcTrend    = getTrend(pool.id,'fc');
+    const phTrend    = getTrend(pool.id,'ph');
+    const demand     = getDemandAnalysis(pool.id);
+    const highDemand = demand&&demand.anomaly;
+    const {next, daysOverdue} = getOverdue(pool);
+    const active     = pool.isActive!==false;
 
-    return`<div class="dash-row" style="${active?'':'opacity:0.55;'}">
-      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;" onclick=onclick="goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
-        <div class="sdot sdot-${s}"></div>
-        <div style="flex:1;min-width:0;">
-          <div class="flex items-center gap8" style="flex-wrap:wrap;row-gap:3px;">
-            <div class="dash-name">${pool.name}</div>
-            <span class="badge b-gray" style="font-size:9px;">${fLabel[pool.frequency]||'?'}</span>
-            ${pool.isSWG?`<span class="badge b-teal" style="font-size:9px;">SWG</span>`:''}
-            ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚠️ High Demand</span>`:''}
-            ${nextDueBadge}
-            ${trend?`<span style="font-size:11px;">${trendHtml(trend,'fc')}</span>`:''}
-          </div>
-          <div class="text-xs text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pool.ownerName||''} · ${pool.address||''}</div>
-          ${pool.notes?`<div class="text-xs" style="color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;font-size:10.5px;">&#128204; ${pool.notes}</div>`:''}
-          ${next&&daysOverdue<=0?`<div style="font-size:10.5px;color:var(--muted);margin-top:1px;">Next: ${next}</div>`:''}
-        </div>
-      </div>
-      <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
-        ${activeToggle}
-        ${last&&!last.skipped?`<div class="dash-readings">
+    // ── Primary readings (right column top) ────────────────────
+    const readingsHtml = last&&!last.skipped
+      ? `<div class="dash-readings">
           ${!last.isQuickVisit&&last.fc!=null?`<span class="rchip">FC ${last.fc}</span>`:''}
           ${!last.isQuickVisit&&last.ph!=null?`<span class="rchip">pH ${last.ph}</span>`:''}
           ${last.isQuickVisit?`<span class="rchip" style="color:var(--swg);">⚡ OTO</span>`:''}
-        </div>`:``}
-        <div class="dash-date">${last?last.date:'No log'}</div>
-        <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;" onclick="event.stopPropagation();showHistory('${pool.id}')">📋 History</button>
+        </div>`
+      : '';
+
+    // ── Contextual trend labels (only non-stable, only if data) ─
+    const fcT = dashTrendHtml('fc', fcTrend);
+    const phT = dashTrendHtml('ph', phTrend);
+    const trendsHtml = (fcT||phT)
+      ? `<div class="dash-trends">${fcT}${phT}</div>` : '';
+
+    // ── Schedule: overdue badge OR muted next-due date ──────────
+    let scheduleHtml = '';
+    if(next){
+      if(daysOverdue>0)
+        scheduleHtml=`<span class="badge" style="background:#FEE2E2;color:#DC2626;font-size:9px;">⚠️ ${daysOverdue}d overdue</span>`;
+      else if(daysOverdue===0)
+        scheduleHtml=`<span class="badge b-yellow" style="font-size:9px;">Due today</span>`;
+      else
+        scheduleHtml=`<span class="dash-schedule">Next ${next}</span>`;
+    } else {
+      scheduleHtml = last
+        ? `<span class="dash-schedule">${last.date}</span>`
+        : `<span class="dash-schedule" style="color:var(--hint);">No log</span>`;
+    }
+
+    // ── Route pill toggle ───────────────────────────────────────
+    const routePill=`<button class="route-pill ${active?'on':'off'}"
+      onclick="event.stopPropagation();togglePoolActive('${pool.id}')"
+      title="${active?'On route — tap to remove':'Off route — tap to add'}"
+    >${active?'● Route':'○ Off'}</button>`;
+
+    // ── History pill ────────────────────────────────────────────
+    const histPill=`<button class="hist-pill"
+      onclick="event.stopPropagation();showHistory('${pool.id}')"
+      title="View history">📋</button>`;
+
+    // ── Row assembly ────────────────────────────────────────────
+    return`<div class="dash-row" style="${active?'':'opacity:0.5;filter:grayscale(0.4);'}" onclick="goPage('route',0);setTimeout(()=>toggleCard('${pool.id}'),80)">
+      <div class="sdot sdot-${s}" style="margin-top:4px;"></div>
+      <div class="dash-left">
+        <div class="dash-name-row">
+          <div class="dash-name">${pool.name}</div>
+          <span class="badge b-gray" style="font-size:9px;">${fLabel[pool.frequency]||'?'}</span>
+          ${pool.isSWG?`<span class="badge b-teal" style="font-size:9px;">SWG</span>`:''}
+          ${highDemand?`<span class="badge b-red" style="font-size:9px;">⚡ High Demand</span>`:''}
+        </div>
+        <div class="dash-sub">${pool.ownerName||''}${pool.address?` · ${pool.address}`:''}</div>
+        ${pool.notes?`<div class="dash-notes">📌 ${pool.notes}</div>`:''}
+      </div>
+      <div class="dash-right">
+        ${readingsHtml}
+        ${trendsHtml}
+        ${scheduleHtml}
+        <div class="dash-actions">
+          ${routePill}
+          ${histPill}
+        </div>
       </div>
     </div>`;
   }).join(''):`<div class="empty-state"><div>No pools to show</div></div>`;
