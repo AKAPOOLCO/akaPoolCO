@@ -3684,7 +3684,7 @@ async function triggerCloudBackup(){
   if(Date.now() - lastBackup < twentyFourH) return; // backed up within 24h
   try{
     const payload = JSON.stringify({pools,inventory,logs,settings,emailCfg,lastChanged:parseInt(localStorage.getItem('akav4_lastChanged')||'0'),backedUpAt:new Date().toISOString()});
-    await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:payload});
+    await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:payload});
     localStorage.setItem('akav4_lastBackup', String(Date.now()));
     renderBackupStatus();
   } catch(e){ /* offline or network error — fail silently */ }
@@ -3742,7 +3742,7 @@ async function pushToCloud(){
       lastChanged: parseInt(localStorage.getItem('akav4_lastChanged')||'0'),
       pushedAt: new Date().toISOString()
     });
-    const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:payload});
+    const res = await fetch(url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:payload});
     if(!res.ok) throw new Error('HTTP '+res.status);
     localStorage.setItem('akav4_lastBackup', String(Date.now()));
     renderBackupStatus();
