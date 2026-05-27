@@ -1234,20 +1234,12 @@ a{color:var(--accent);}
   </div>
 
   <div class="form-group mt12" style="margin-top:10px;">
-    <label class="form-label">Notes / Observations <span style="font-weight:400;color:var(--hint);">(saved internally)</span></label>
+    <label class="form-label">Notes / Observations <span style="font-weight:400;color:var(--hint);">(auto-included in client email if filled)</span></label>
     <textarea class="form-textarea" id="s-notes" placeholder="Equipment issues, follow-up needed..."></textarea>
   </div>
 
-  <!-- NOTES TOGGLE — controls whether notes appear in the client email -->
-  <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:var(--r);padding:10px 13px;margin-bottom:10px;">
-    <div>
-      <div style="font-size:13px;font-weight:700;">Include notes in client report</div>
-      <div style="font-size:11px;color:var(--muted);">Off by default — turn on to share notes with client</div>
-    </div>
-    <div class="toggle-track" id="notes-toggle" onclick="toggleNotesReport()">
-      <div class="toggle-thumb"></div>
-    </div>
-  </div>
+  <!-- NOTES TOGGLE REMOVED v9.2 — notes are now automatically included in client
+       email whenever the textarea contains text. No toggle required. -->
 
   <div class="form-row">
     <div class="form-group">
@@ -2041,6 +2033,12 @@ function calcDosing(){
   // ── Chlorine block ──
   if(fc!==null){
     if(isSWG){
+      // v9.2 Fix 1: For SWG CRITICAL (fc<2), ChemEngine returns clDose=0 because the pool
+      // is salt-system. Compute an equivalent liquid-chlorine shock dose for display only —
+      // this is never written to the log. The formula is identical to the liquid-pool path.
+      const _swgCriticalDose = fc<2
+        ? ChemEngine.chlorineDose(fc, targetFC, vol, settings.clStrength, settings.minDose)
+        : 0;
       const fcCls  = fc<2?'d-alert':fc<targetFC?'d-warn':'d-teal';
       const fcTcls = fc<2?'c-alert':fc<targetFC?'c-warn':'c-teal';
       html+=`<div class="dose-block ${fcCls}">
@@ -2049,7 +2047,8 @@ function calcDosing(){
         <div class="dose-row"><span>Target FC</span><span class="dose-val">${targetFC} ppm</span></div>
         <div class="dose-row"><span>Action</span><span class="dose-val">${fc>=targetFC?'Generator managing':'Boost SWG output'}</span></div>
         ${getTrend(poolId,'fc')?`<div class="dose-row"><span>FC trend</span><span>${trendHtml(getTrend(poolId,'fc'),'fc')}</span></div>`:''}
-        ${fc<2?`<div class="dose-note">CRITICAL — manually shock pool. SWG cannot recover this fast.</div>`:''}
+        ${fc<2?`<div class="dose-note">CRITICAL — SWG cannot recover this fast. Manually shock pool immediately.</div>`:''}
+        ${_swgCriticalDose>0?`<div class="dose-row"><span><strong>Shock dose needed</strong></span><span class="dose-val"><strong>${_swgCriticalDose} oz liquid Cl</strong></span></div>`:''}
       </div>`;
     } else {
       const fcCls  = fc<2?'d-alert':clDose>0?'d-warn':'d-ok';
@@ -2062,6 +2061,28 @@ function calcDosing(){
         ${getTrend(poolId,'fc')?`<div class="dose-row"><span>FC trend</span><span>${trendHtml(getTrend(poolId,'fc'),'fc')}</span></div>`:''}
       </div>`;
     }
+  }
+
+  // ── TA / Baking Soda block — v9.2 Fix 2A ────────────────────────────
+  // Previously bicarbDose only surfaced inside the CSI "how to fix" text,
+  // which requires ALL 5 readings. Now it gets its own block whenever ta
+  // is entered, so the tech sees the baking-soda dose in real time even
+  // when CH / CYA / Temp fields are still blank.
+  // Uses raw `ta` (not the 80-fallback) so the block only fires when the
+  // tech has actually typed a value into the TA field.
+  if(ta !== null){
+    const taOk   = ta>=60 && ta<=120;
+    const taHigh = ta>160;
+    const taCls  = taOk?'d-ok':taHigh?'d-alert':'d-warn';
+    const taTcls = taOk?'c-ok':taHigh?'c-alert':'c-warn';
+    html+=`<div class="dose-block ${taCls}">
+      <div class="dose-title ${taTcls}">${taOk?'✅ Total Alkalinity OK':ta<60?'⚠️ TA Low — Add Baking Soda':ta>160?'🚨 TA Very High':'⚠️ TA High — Lower with Acid'}</div>
+      <div class="dose-row"><span>Current TA</span><span class="dose-val">${ta} ppm</span></div>
+      <div class="dose-row"><span>Target TA</span><span class="dose-val">${targetTA} ppm (range 60–120)</span></div>
+      ${bicarbDose>0?`<div class="dose-row"><span><strong>Dose needed</strong></span><span class="dose-val"><strong>${bicarbDose} lbs baking soda</strong></span></div>`:''}
+      ${ta>120?`<div class="dose-note">High TA: lower gradually with muriatic acid — refer to the pH/Acid block above for exact dose guidance.</div>`:''}
+      ${bicarbDose>0?`<div class="dose-note">Add baking soda in front of return jets with pump running. Retest after 4h circulation.</div>`:''}
+    </div>`;
   }
 
   // ── pH / Acid block ──
@@ -2483,9 +2504,7 @@ function openService(poolId){
   if(!pool.isSWG) document.getElementById('s-salt').value='';
   document.getElementById('dose-panel').innerHTML='';
   document.getElementById('svc-msg').style.display='none';
-  // Always default notes toggle to OFF for each new service
-  notesInReport=false;
-  document.getElementById('notes-toggle').classList.remove('on');
+  // notesInReport toggle removed v9.2 — notes auto-include when textarea has text
   chemAdded=null;
   document.getElementById('chem-yes').className='chem-yn-btn';
   document.getElementById('chem-no').className='chem-yn-btn';
@@ -2872,6 +2891,11 @@ function buildQuickHTMLEmail(pool,log){
     qClDose  = _qR.clDose;
     qAcidDose= _qR.acidDose;
   }
+  // v9.2 Fix 2C: for SWG CRITICAL (fc<2), clDose=0 because the pool is salt-system.
+  // Compute an equivalent liquid-chlorine shock dose for the email action column.
+  const qCriticalDose = (fc!==null && fc<2 && pool.isSWG)
+    ? ChemEngine.chlorineDose(fc, pool.targetFC||6, pool.volume||15000, settings.clStrength, settings.minDose)
+    : 0;
 
   const otoMap={none:'No chlorine detected ⚠️',clear:'Trace — chlorine present',yellow:'Yellow — chlorine present ✓',orange:'Orange — high chlorine','not-done':'Not tested'};
   const otoText=otoMap[otos]||'—';
@@ -2901,7 +2925,13 @@ function buildQuickHTMLEmail(pool,log){
           <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1e293b;text-align:center;border-bottom:1px solid #f1f5f9;font-family:monospace;">${fc} ppm</td>
           <td style="padding:9px 10px;text-align:right;border-bottom:1px solid #f1f5f9;">
             <span style="background:${fc<2?'#fff1f2':qClDose>0?'#fffbeb':'#f0fdf4'};color:${fc<2?'#dc2626':qClDose>0?'#b45309':'#16a34a'};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;">
-              ${fc<2?'CRITICAL':qClDose>0?'Add '+qClDose+' oz Cl':'OK'}
+              ${fc<2
+  ? (qCriticalDose>0
+      ? `🚨 CRITICAL — Add ${qCriticalDose} oz liquid Cl (shock)`
+      : `🚨 CRITICAL — Shock pool immediately`)
+  : qClDose>0
+    ? `Add ${qClDose} oz Cl`
+    : 'OK'}
             </span>
           </td>
         </tr>`:''}
@@ -2969,6 +2999,23 @@ function buildQuickHTMLEmail(pool,log){
 function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaDose,csi,cs,includeNotes,fcHighThreshold){
   const {fc,tc,cc,ph,ta,ch,cya,salt,temp,work,notes,clAdded,acidAdded}=log;
 
+  // v9.2 Fix 2C: compute doses not in the function signature so Status column
+  // can show exact calculated amounts for ALL parameters, not just FC and pH.
+  // These are display-only; they mirror what ChemEngine.calcAll() would return
+  // and are called with the same settings used in submitService().
+  const _vol = pool.volume || 15000;
+  const _poolType = pool.poolType || 'plaster';
+  const _defCH = _poolType==='vinyl'?150:_poolType==='fiberglass'?250:(pool.isSWG?350:300);
+  const _tgtTA  = pool.targetTA  || 80;
+  const _tgtCH  = pool.targetCH  || _defCH;
+  const _bicarbDoseEmail = ta!=null ? ChemEngine.bicarbDose(ta, _tgtTA, _vol) : 0;
+  const _chDoseEmail     = ch!=null ? ChemEngine.chDose(ch,  _tgtCH, _vol) : 0;
+  // For SWG CRITICAL (clDose=0 because isSWG), compute equivalent liquid dose for display
+  const _criticalDoseEmail = (fc!=null && fc<2 && clDose===0)
+    ? ChemEngine.chlorineDose(fc, pool.targetFC||6, _vol, settings.clStrength, settings.minDose) : 0;
+  // Effective FC dose for the action column (uses critical dose when applicable)
+  const _fcActionDose = (fc!=null && fc<2) ? (_criticalDoseEmail || clDose) : clDose;
+
   // ── CSI status colours ──
   const csiNum=csi!==null?(csi>0?'+':'')+csi:'N/A';
   const csiColor=csi===null?'#64748b':Math.abs(csi)<=0.3?'#16a34a':Math.abs(csi)<=0.6?'#b45309':'#dc2626';
@@ -3019,8 +3066,10 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
     ? work.map(w=>`<span style="display:inline-block;background:#eef2f7;border-radius:16px;padding:5px 12px;font-size:11px;color:#475569;font-weight:600;margin:3px;">✓ ${workLabels[w]||w}</span>`).join('')
     : '<span style="font-size:13px;color:#64748b;">Routine service</span>';
 
-  // ── Notes section (only if toggled on) ──
-  const notesSection=includeNotes&&notes
+  // v9.2 Fix 3: notes are auto-included whenever the textarea has text.
+  // The includeNotes toggle was removed from the DOM; this line is kept
+  // signature-compatible but ignores the flag entirely.
+  const notesSection = notes
     ?`<tr><td style="padding:0 0 24px;">
         <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Technician Notes</div>
         <div style="background:#fdfdfd;border:1px dashed #cbd5e1;border-radius:10px;padding:16px 18px;font-style:italic;color:#64748b;font-size:13px;line-height:1.65;">"${notes}"</div>
@@ -3065,31 +3114,36 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
         <!-- header row -->
         <tr style="background:#f8fafc;">
-          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Parameter</td>
-          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:center;">Reading</td>
-          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:center;">Target</td>
-          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:right;">Status</td>
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;width:24%;">Parameter</td>
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:center;width:13%;">Reading</td>
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:center;width:13%;">Target</td>
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:right;width:50%;">Status / Action Required</td>
         </tr>
         ${[
           {lbl:'Free Chlorine (FC)', val:fc, unit:'ppm', target:pool.targetFC||6,
            ok:fc!=null&&fc>=(pool.targetFC||6)*0.8&&fc<=fcHighThreshold,
            warn:fc!=null&&(fc<2||fc>fcHighThreshold),
-           // clDose already computed by ChemEngine.calcAll() in submitService — reuse it
-           action: fc!=null&&fc<2?'CRITICAL':clDose>0?`Add ${clDose} oz`:fc!=null&&fc>fcHighThreshold?'High — do not add':'OK'},
+           action: fc!=null&&fc<2
+             ? (_fcActionDose>0?`🚨 CRITICAL — Add ${_fcActionDose} oz liquid Cl (shock)`:'🚨 CRITICAL — Shock pool immediately')
+             : clDose>0?`Add ${clDose} oz liquid Cl`
+             : fc!=null&&fc>fcHighThreshold?'High — do not add chlorine':'OK'},
           {lbl:'pH', val:ph, unit:'', target:pool.targetPH||7.4,
            ok:ph!=null&&ph>=7.2&&ph<=7.8, warn:ph!=null&&(ph<7.0||ph>8.0),
-           // acidDose already computed by ChemEngine.calcAll() in submitService — reuse it
            action:acidDose>0?`Add ${acidDose} oz muriatic acid`:phUpDose>0?`Add ${phUpDose} oz soda ash`:'OK'},
-          {lbl:'Total Alkalinity', val:ta, unit:'ppm', target:pool.targetTA||80,
-           ok:ta!=null&&ta>=60&&ta<=120, warn:ta!=null&&(ta<40||ta>160), action:''},
-          {lbl:'Calcium Hardness', val:ch, unit:'ppm', target:null,
-           ok:ch!=null&&ch>=200&&ch<=400, warn:ch!=null&&(ch<150||ch>500), action:''},
+          {lbl:'Total Alkalinity', val:ta, unit:'ppm', target:_tgtTA,
+           ok:ta!=null&&ta>=60&&ta<=120, warn:ta!=null&&(ta<40||ta>160),
+           action:_bicarbDoseEmail>0?`Add ${_bicarbDoseEmail} lbs baking soda`:ta!=null&&ta>120?'High — lower with acid':''},
+          {lbl:'Calcium Hardness', val:ch, unit:'ppm', target:_tgtCH,
+           ok:ch!=null&&ch>=200&&ch<=400, warn:ch!=null&&(ch<150||ch>500),
+           action:_chDoseEmail>0?`Add ${_chDoseEmail} lbs calcium chloride`:''},
           {lbl:'CYA (Stabilizer)',  val:cya, unit:'ppm', target:pool.targetCYA||70,
            ok:cya!=null&&cya>=(pool.targetCYA||70)-10&&cya<=(pool.targetCYA||70)+20,
-           warn:cya!=null&&cya>(pool.targetCYA||70)+30, action:''},
+           warn:cya!=null&&cya>(pool.targetCYA||70)+30,
+           action:cyaDose>0?`Add ${cyaDose} fl oz liquid stabilizer`:cya!=null&&cya>(pool.targetCYA||70)+30?'Too high — partial drain only':''},
           ...(pool.isSWG?[{lbl:'Salt Level', val:salt, unit:'ppm', target:pool.saltTarget||3200,
            ok:salt!=null&&salt>=(pool.saltTarget||3200)-100&&salt<=(pool.saltTarget||3200)+300,
-           warn:salt!=null&&(salt<2500||salt>4000), action:''}]:[])
+           warn:salt!=null&&(salt<2500||salt>4000),
+           action:saltDose>0?`Add ${saltDose} lbs salt`:salt!=null&&salt>4000?'Too high — partial drain only':''}]:[])
         ].map((r,i)=>{
           const rowBg=i%2===0?'#ffffff':'#f8fafc';
           const statusColor=r.val==null?'#94a3b8':r.warn?'#dc2626':r.ok?'#16a34a':'#b45309';
@@ -3100,8 +3154,8 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
             <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1e293b;text-align:center;border-bottom:1px solid #f1f5f9;font-family:monospace;">${r.val!=null?r.val+''+r.unit:'—'}</td>
             <td style="padding:9px 10px;font-size:11px;color:#64748b;text-align:center;border-bottom:1px solid #f1f5f9;">${r.target!=null?r.target+' '+r.unit:'—'}</td>
             <td style="padding:9px 10px;text-align:right;border-bottom:1px solid #f1f5f9;">
-              <span style="background:${statusBg};color:${statusColor};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;">${statusLabel}</span>
-              ${r.action&&r.action!=='OK'?`<div style="font-size:10px;color:${statusColor};margin-top:2px;">${r.action}</div>`:''}
+              <span style="background:${statusBg};color:${statusColor};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;white-space:nowrap;">${statusLabel}</span>
+              ${r.action&&r.action!=='OK'?`<div style="font-size:11px;color:${statusColor};margin-top:3px;font-weight:600;">${r.action}</div>`:''}
             </td>
           </tr>`;
         }).join('')}
@@ -3238,7 +3292,7 @@ function showHistory(poolId){
   const cutStr=cutoff.toISOString().split('T')[0];
   const poolLogs=[...logs]
     .filter(l=>l.poolId===poolId && l.date>=cutStr)
-    .sort((a,b)=>b.date.localeCompare(a.date));
+    .sort((a,b)=>b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
   if(!poolLogs.length){
     document.getElementById('hist-content').innerHTML=
@@ -3292,6 +3346,9 @@ function showHistory(poolId){
             <div style="display:flex;flex-wrap:wrap;gap:4px;">
               ${l.work.map(w=>`<span style="font-size:10px;background:var(--surface2);border-radius:10px;padding:2px 8px;color:var(--muted);font-weight:700;">${workLabels[w]||w}</span>`).join('')}
             </div>`:''}
+          ${l.chemicalsAdded!==undefined&&l.chemicalsAdded!==null?`
+            <div class="hist-section">Chemicals added</div>
+            <span class="badge ${l.chemicalsAdded===true?'b-green':'b-gray'}" style="font-size:10px;">${l.chemicalsAdded===true?'✓ Yes — chemicals added':'✗ No chemicals added'}</span>`:''}
           ${l.notes?`<div class="text-xs text-muted" style="margin-top:6px;font-style:italic;">"${l.notes}"</div>`:''}
         </div>
       </div>`;
@@ -3378,7 +3435,11 @@ function showHistory(poolId){
           </div>`:''}
           `:''}
 
-          <!-- WORK PERFORMED -->
+          <!-- CHEMICALS ADDED YES/NO — v9.2: always shown since it is required -->
+          <div class="hist-section">Chemicals added this visit</div>
+          <span class="badge ${l.chemicalsAdded===true?'b-green':l.chemicalsAdded===false?'b-gray':'b-gray'}" style="font-size:10px;margin-bottom:4px;display:inline-flex;">
+            ${l.chemicalsAdded===true?'✓ Yes — chemicals added':l.chemicalsAdded===false?'✗ No chemicals added':'— Not recorded'}
+          </span>
           ${l.work&&l.work.length?`
           <div class="hist-section">Work performed</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;">
@@ -3787,10 +3848,8 @@ function editPool(idx){
   document.getElementById('pool-del-wrap').style.display='block';
   openSheet('pool-sheet');
 }
-function toggleNotesReport(){
-  notesInReport=!notesInReport;
-  document.getElementById('notes-toggle').classList.toggle('on',notesInReport);
-}
+// toggleNotesReport() removed v9.2 — notes are now auto-included in client email
+// whenever the notes textarea contains text. No toggle, no manual action required.
 
 function setChemAdded(val){
   chemAdded=val;
