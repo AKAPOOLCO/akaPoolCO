@@ -2013,10 +2013,20 @@ function calcDosing(){
   const _missing  = ['pH','TA','CH','CYA','Temp']
     .filter((_,i)=>[ph,ta,ch,cya,temp][i]===null);
 
+  // ── Fix 1 (v9.1): Display-only TA fallback ───────────────────────────
+  // acidDose() requires TA for its buffer-factor formula. When the
+  // accordion is closed and s-ta is blank, ta===null and the engine
+  // returns acidDose=0 — the pH High banner shows but with no dose amount.
+  // We substitute TFP baseline 80 ppm HERE ONLY (display panel) so the
+  // tech sees an estimated dose in real-time. This value is NEVER written
+  // to the log or passed to submitService() — both still read s-ta
+  // directly and will save/send null if the field is genuinely empty.
+  const _taForDisplay = ta !== null ? ta : 80;
+
   // ── Single engine call — identical to submitService() ──
   const R = ChemEngine.calcAll(
     pool,
-    {fc,tc,cc,ph,ta,ch,cya,salt,temp},
+    {fc,tc,cc,ph,ta:_taForDisplay,ch,cya,salt,temp},
     settings.clStrength,
     settings.minDose
   );
@@ -2848,6 +2858,21 @@ async function submitService(){
 
 function buildQuickHTMLEmail(pool,log){
   const {work,notes,otos,chemicalsAdded}=log;
+  // Fix 3 (v9.1): v9 now captures FC and pH on the quick path — surface them
+  const fc=log.fc!=null?log.fc:null;
+  const ph=log.ph!=null?log.ph:null;
+  const hasFcPh = fc!==null||ph!==null;
+
+  // If we have FC/pH, also compute dosing so the email matches what the tech saw
+  let qAcidDose=0, qClDose=0;
+  if(hasFcPh){
+    const _qR = ChemEngine.calcAll(pool,
+      {fc,tc:null,cc:null,ph,ta:80,ch:null,cya:null,salt:null,temp:null},
+      settings.clStrength, settings.minDose);
+    qClDose  = _qR.clDose;
+    qAcidDose= _qR.acidDose;
+  }
+
   const otoMap={none:'No chlorine detected ⚠️',clear:'Trace — chlorine present',yellow:'Yellow — chlorine present ✓',orange:'Orange — high chlorine','not-done':'Not tested'};
   const otoText=otoMap[otos]||'—';
   const otoColor=otos==='none'?'#dc2626':otos==='clear'?'#b45309':'#16a34a';
@@ -2860,6 +2885,38 @@ function buildQuickHTMLEmail(pool,log){
   const chemText=chemicalsAdded===true?'Yes':'No';
   const chemColor=chemicalsAdded===true?'#16a34a':'#64748b';
   const serviceDate=new Date(log.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  // Build the FC/pH chemistry section — only inserted when readings exist
+  const chemSection=hasFcPh?`
+    <tr><td style="padding:0 0 20px;">
+      <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Water Chemistry</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        <tr style="background:#f8fafc;">
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Parameter</td>
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:center;">Reading</td>
+          <td style="padding:7px 10px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:1px solid #e5e7eb;text-align:right;">Action</td>
+        </tr>
+        ${fc!==null?`<tr style="background:#ffffff;">
+          <td style="padding:9px 10px;font-size:12px;color:#374151;font-weight:600;border-bottom:1px solid #f1f5f9;">Free Chlorine (FC)</td>
+          <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1e293b;text-align:center;border-bottom:1px solid #f1f5f9;font-family:monospace;">${fc} ppm</td>
+          <td style="padding:9px 10px;text-align:right;border-bottom:1px solid #f1f5f9;">
+            <span style="background:${fc<2?'#fff1f2':qClDose>0?'#fffbeb':'#f0fdf4'};color:${fc<2?'#dc2626':qClDose>0?'#b45309':'#16a34a'};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;">
+              ${fc<2?'CRITICAL':qClDose>0?'Add '+qClDose+' oz Cl':'OK'}
+            </span>
+          </td>
+        </tr>`:''}
+        ${ph!==null?`<tr style="background:#f8fafc;">
+          <td style="padding:9px 10px;font-size:12px;color:#374151;font-weight:600;border-bottom:1px solid #f1f5f9;">pH</td>
+          <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1e293b;text-align:center;border-bottom:1px solid #f1f5f9;font-family:monospace;">${ph}</td>
+          <td style="padding:9px 10px;text-align:right;border-bottom:1px solid #f1f5f9;">
+            <span style="background:${ph<7.2||ph>7.8?'#fffbeb':'#f0fdf4'};color:${ph<7.2||ph>7.8?'#b45309':'#16a34a'};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;">
+              ${qAcidDose>0?'Add '+qAcidDose+' oz acid':ph<7.2?'pH Low — monitor':'OK'}
+            </span>
+          </td>
+        </tr>`:''}
+      </table>
+    </td></tr>`:'';
+
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f0f7ff;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;padding:30px 20px;">
@@ -2887,6 +2944,7 @@ function buildQuickHTMLEmail(pool,log){
         <span style="font-size:13px;font-weight:700;color:${otoColor};">${otoText}</span>
       </div>
     </td></tr>
+    ${chemSection}
     <tr><td style="padding:0 0 20px;">
       <div style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e5e7eb;">Work Performed</div>
       <div style="line-height:2;">${workChips}</div>
@@ -3216,6 +3274,19 @@ function showHistory(poolId){
           <span class="hist-chevron">▼</span>
         </div>
         <div class="hist-body">
+          ${/* Fix 2 (v9.1): show FC / pH when v9 captured them on the quick path */
+          (l.fc!=null||l.ph!=null)?`
+            <div class="hist-section">Test results</div>
+            <div class="hist-readings" style="grid-template-columns:1fr 1fr;">
+              <div class="hist-cell">
+                <div class="hist-cell-lbl">FC</div>
+                <div class="hist-cell-val">${l.fc!=null?l.fc+'<span style="font-size:9px;">ppm</span>':'—'}</div>
+              </div>
+              <div class="hist-cell">
+                <div class="hist-cell-lbl">pH</div>
+                <div class="hist-cell-val">${l.ph!=null?l.ph:'—'}</div>
+              </div>
+            </div>`:''}
           ${l.work&&l.work.length?`
             <div class="hist-section">Work performed</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;">
