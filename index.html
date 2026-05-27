@@ -1152,8 +1152,7 @@ a{color:var(--accent);}
     </div>
   </div>
 
-  <!-- DOSING PANEL — fires on FC/pH entry, expands with advanced data -->
-  <div id="dose-panel"></div>
+  <!-- DOSING PANEL moved to v9.3 — see below accordion for new position -->
 
   <!-- ── ACCORDION: FULL TEST PANEL ── -->
   <button type="button" class="lv-adv-toggle" id="lv-adv-toggle" onclick="toggleLogAdvanced()">
@@ -1200,6 +1199,14 @@ a{color:var(--accent);}
       </div>
     </div>
   </div>
+
+  <!-- ── DYNAMIC DOSING / ACTION BANNER PANEL — v9.3 Fix 2 ──────────────
+       Relocated here so that banners expand DOWNWARD below all input
+       fields. Height changes from new banners never push FC/pH inputs
+       away from the technician's thumb. calcDosing() targets this div
+       by ID — no JS changes required.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div id="dose-panel" style="margin-top:8px;"></div>
 
   <!-- WORK DONE -->
   <div class="reading-section mt12" style="margin-top:10px;">
@@ -2082,6 +2089,27 @@ function calcDosing(){
       ${bicarbDose>0?`<div class="dose-row"><span><strong>Dose needed</strong></span><span class="dose-val"><strong>${bicarbDose} lbs baking soda</strong></span></div>`:''}
       ${ta>120?`<div class="dose-note">High TA: lower gradually with muriatic acid — refer to the pH/Acid block above for exact dose guidance.</div>`:''}
       ${bicarbDose>0?`<div class="dose-note">Add baking soda in front of return jets with pump running. Retest after 4h circulation.</div>`:''}
+    </div>`;
+  }
+
+  // ── CH / Calcium Hardness block ─────────────────────────────────────
+  // v9.3 Fix 1: chDose was already computed by ChemEngine.calcAll() and
+  // destructured above, but there was no render block to surface it. This
+  // block mirrors the TA and pH blocks: fires as soon as ch is entered,
+  // shows a dose row when action is needed, and is silenced when in range.
+  if(ch!==null){
+    const chOk   = ch>=200&&ch<=400;
+    const chHigh = ch>500;
+    const chCls  = chOk?'d-ok':chHigh?'d-alert':chDose>0?'d-warn':'d-ok';
+    const chTcls = chOk?'c-ok':chHigh?'c-alert':chDose>0?'c-warn':'c-ok';
+    html+=`<div class="dose-block ${chCls}">
+      <div class="dose-title ${chTcls}">${chOk?'✅ Calcium Hardness OK':chHigh?'⚠️ CH High — Monitor':chDose>0?'⚠️ CH Low — Add Calcium Chloride':'✅ Calcium Hardness OK'}</div>
+      <div class="dose-row"><span>Current CH</span><span class="dose-val">${ch} ppm</span></div>
+      <div class="dose-row"><span>Target CH</span><span class="dose-val">${targetCH} ppm (range 200–400)</span></div>
+      ${chDose>0?`<div class="dose-row"><span><strong>Dose needed</strong></span><span class="dose-val"><strong>${chDose} lbs calcium chloride</strong></span></div>`:''}
+      ${chDose>0?`<div class="dose-note">Granular calcium chloride (77–80%): pre-dissolve in a bucket before adding. Raises hardness ~8 ppm per lb per 10k gal. Retest after 4h circulation.</div>`:''}
+      ${chHigh?`<div class="dose-note">CH above 400 ppm — no chemical can reduce hardness. Partial drain and refill with fresh water is the only remedy.</div>`:''}
+      ${chOk?`<div class="dose-note">CH in range. No action needed.</div>`:''}
     </div>`;
   }
 
