@@ -442,7 +442,7 @@ a{color:var(--accent);}
 .dash-row:active{background:var(--surface2);}
 .dash-grid{
   display:grid;grid-template-columns:35% 30% 35%;
-  gap:5px 4px;
+  gap:6px 4px;
 }
 .dg-c1{text-align:left;min-width:0;overflow:hidden;}
 .dg-c2{text-align:center;min-width:0;}
@@ -3576,10 +3576,18 @@ function renderDashboard(){
     // ── Row 2 — pH reading with inline arrow ────────────────────
     const phArrow = dashTrendHtml('ph', phTrend);
     const phText  = r.ph!=null ? `pH ${r.ph}${phArrow?' ':''}${phArrow}` : 'pH —';
-    const taTemp  = [
-      r.ta!=null   ? r.ta+' ppm'  : null,
-      r.temp!=null ? r.temp+'°F'  : null
-    ].filter(Boolean).join(' | ') || '—';
+
+    // v9.4: split formerly-cramped pairs into individual variables
+    // ── Row 2 C3 — TA alone (was shared with Temp) ─────────────
+    const taVal   = r.ta!=null   ? `TA ${r.ta} ppm`   : 'TA —';
+    // ── Row 3 C2 — Temp alone (was shared with TA) ─────────────
+    const tempVal = r.temp!=null ? `${r.temp}°F`       : 'Temp —';
+    // ── Row 3 C3 — CYA alone (was shared with Salt) ────────────
+    const cyaVal  = r.cya!=null  ? `CYA ${r.cya}`      : 'CYA —';
+    // ── Row 4 C2 — Salt for SWG, CH for liquid (both need space) ─
+    const saltChVal = pool.isSWG
+      ? (r.salt!=null ? `Salt ${r.salt}` : 'Salt —')
+      : (r.ch!=null   ? `CH ${r.ch} ppm` : 'CH —');
 
     // ── Row 3 — schedule cell ───────────────────────────────────
     let schedHtml;
@@ -3595,12 +3603,6 @@ function renderDashboard(){
         ? `<span class="dg-meta">${lastAny.date}</span>`
         : `<span class="dg-meta" style="color:var(--hint);">No log</span>`;
     }
-
-    // ── Row 3 — CYA + optional Salt (SWG only) ─────────────────
-    const cyaSalt = [
-      r.cya!=null ? `CYA ${r.cya}` : 'CYA —',
-      pool.isSWG&&r.salt!=null ? `Salt ${r.salt}` : null
-    ].filter(Boolean).join(' · ');
 
     // ── Status accent on left border ────────────────────────────
     const borderColor  = statusBarColor(s);
@@ -3622,7 +3624,7 @@ function renderDashboard(){
           <span class="dg-meta">Tgt FC ${pool.targetFC||6}</span>
         </div>
 
-        <!-- ROW 2: Sanitizer·type | pH + arrow | TA·Temp -->
+        <!-- ROW 2: Sanitizer·type | pH + arrow | TA ppm -->
         <div class="dg-c1">
           <span class="dg-meta">${pool.isSWG?'SWG':'Liquid Cl'} · ${ptShort[pool.poolType||'plaster']}</span>
         </div>
@@ -3630,23 +3632,32 @@ function renderDashboard(){
           <span class="dg-reading${r.ph==null?' dg-dim':''}">${phText}</span>
         </div>
         <div class="dg-c3">
-          <span class="dg-meta">TA/T ${taTemp}</span>
+          <span class="dg-meta">${taVal}</span>
         </div>
 
-        <!-- ROW 3: Schedule | CYA(·Salt) | CSI badge·label -->
+        <!-- ROW 3: Schedule | Temp °F | CYA ppm -->
         <div class="dg-c1">${schedHtml}</div>
         <div class="dg-c2">
-          <span class="dg-reading" style="font-size:11px;">${cyaSalt}</span>
+          <span class="dg-meta">${tempVal}</span>
+        </div>
+        <div class="dg-c3">
+          <span class="dg-meta">${cyaVal}</span>
+        </div>
+
+        <!-- ROW 4: Notes | Salt(SWG) or CH(liquid) | CSI badge -->
+        <div class="dg-c1">
+          <span class="dg-notes">${pool.notes||'—'}</span>
+        </div>
+        <div class="dg-c2">
+          <span class="dg-meta">${saltChVal}</span>
         </div>
         <div class="dg-c3">
           <span class="badge ${cs.cls}" style="font-size:9px;padding:2px 5px;">${csiNum}</span>
           <div class="dg-meta" style="margin-top:1px;">${csiShort}</div>
         </div>
 
-        <!-- ROW 4: Notes | History btn | Route toggle -->
-        <div class="dg-c1">
-          <span class="dg-notes">${pool.notes||'—'}</span>
-        </div>
+        <!-- ROW 5: (spacer) | History btn | Route toggle -->
+        <div class="dg-c1"></div>
         <div class="dg-c2">
           <button class="dg-hist-btn"
             onclick="event.stopPropagation();showHistory('${pool.id}')"
