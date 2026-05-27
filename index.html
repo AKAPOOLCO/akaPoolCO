@@ -637,6 +637,48 @@ a{color:var(--accent);}
 
 /* v7.4 sync indicator */
 #sync-indicator{transition:color .3s;user-select:none;font-family:var(--mono);font-size:12px;cursor:pointer;}
+
+/* ─────────────────────────────────────────
+   v9 LOG VISIT — ACCORDION
+───────────────────────────────────────── */
+/* Primary vitals grid — FC and pH side by side */
+.lv-primary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:0;}
+
+/* Accordion toggle button */
+.lv-adv-toggle{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;padding:11px 14px;margin-top:12px;
+  background:var(--surface2);border:1.5px solid var(--border);
+  border-radius:var(--r);cursor:pointer;
+  font-size:12px;font-weight:800;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.07em;
+  transition:background .15s,border-color .15s;
+  -webkit-user-select:none;user-select:none;
+}
+.lv-adv-toggle:active{background:var(--surface3);}
+.lv-adv-toggle.open{
+  border-color:var(--accent);color:var(--accent);
+  background:var(--blue-lt);border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none;
+}
+.lv-adv-arrow{
+  font-size:11px;transition:transform .22s;flex-shrink:0;margin-left:6px;
+}
+.lv-adv-toggle.open .lv-adv-arrow{transform:rotate(180deg);}
+
+/* Accordion body */
+.lv-adv-body{
+  display:none;border:1.5px solid var(--accent);border-top:none;
+  border-bottom-left-radius:var(--r);border-bottom-right-radius:var(--r);
+  background:var(--blue-lt);padding:10px 10px 12px;
+}
+.lv-adv-body.open{display:block;}
+.lv-adv-hint{
+  font-size:10.5px;color:var(--accent);font-weight:600;
+  margin-bottom:10px;line-height:1.4;opacity:.8;
+}
+
+/* Log Visit route card — 2-button layout */
+.pool-actions-lv{display:grid;grid-template-columns:2fr 1fr;gap:7px;padding:12px 14px 14px;}
 </style>
 </head>
 <body>
@@ -812,14 +854,10 @@ a{color:var(--accent);}
             <div class="sop-label">Beginning the day</div>
             <div class="sop-p">Open the Route tab. Pools scheduled for today are listed. Drag using the ☰ icon to match your driving order.</div>
             <div class="sop-divider"></div>
-            <div class="sop-label">⚡ Quick Visit — maintenance only</div>
-            <div class="sop-p">For mid-week checks or bi-weekly stops. Tap ⚡ Quick.</div>
-            <div class="sop-item"><span class="sop-bullet">→</span><span>Empty skimmer, brush, OTO chlorine presence test.</span></div>
-            <div class="sop-item"><span class="sop-bullet">→</span><span>Logs the visit and proves presence. Does <em>not</em> alter the pool's chemical baseline data.</span></div>
-            <div class="sop-divider"></div>
-            <div class="sop-label">🧪 Full Log — chemical workup</div>
-            <div class="sop-p">Tap 🧪 Full Log. Perform a Taylor K-2006-SALT titration test.</div>
-            <div class="sop-item"><span class="sop-bullet">→</span><span>Input exact readings. App calculates CSI and dosing in oz/lbs based on pool volume and SWG status.</span></div>
+            <div class="sop-label">📋 Log Visit — single entry point (v9)</div>
+            <div class="sop-p">Tap <strong>Log Visit</strong> on any route card. The form opens with FC, pH, and an OTO check visible immediately.</div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Fill FC and pH. Submit for a quick-style log (perfect for maintenance visits or bi-weekly checks). The CSI engine fills missing advanced values from last known readings.</span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Tap <strong>🧪 Full Test Panel</strong> to expand the accordion and enter TC, TA, CH, CYA, Salt, and Temp for a complete FAS-DPD workup with CSI and full dosing analysis.</span></div>
             <div class="sop-item"><span class="sop-bullet">→</span><span>Check work boxes. Tap <strong>Submit &amp; Email Client</strong>.</span></div>
           </div>
         </div>
@@ -869,7 +907,7 @@ a{color:var(--accent);}
 
       </div>
 
-      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v8.4 · localStorage only</div>
+      <div style="text-align:center;font-size:11px;color:var(--hint);padding:14px 0 4px;">akaPoolCO v9.0 · localStorage only</div>
     </div>
 
   </div><!-- /content -->
@@ -1073,22 +1111,58 @@ a{color:var(--accent);}
 </div>
 </div>
 
-<!-- Full Service Log -->
+<!-- ══════════════════════════════════════════
+     LOG VISIT (v9 — merged Quick + Full Log)
+     Sheet ID and all reading field IDs are
+     UNCHANGED so calcDosing() / submitService()
+     continue to work without modification.
+══════════════════════════════════════════ -->
 <div class="overlay" id="service-sheet">
 <div class="sheet">
   <div class="sheet-handle"></div>
-  <div class="sheet-title" id="svc-title">Log Service</div>
+  <div class="sheet-title" id="svc-title">Log Visit</div>
   <input type="hidden" id="svc-pool-id">
 
-  <!-- Taylor K-2006-SALT readings -->
-  <div class="reading-section">
-    <div class="reading-section-title">Taylor K-2006-SALT Readings</div>
-    <div class="reading-grid">
+  <!-- ── OTO Chlorine Check (Quick presence test) ── -->
+  <div class="reading-section" style="margin-top:0;">
+    <div class="reading-section-title">OTO Chlorine Check <span style="font-weight:500;text-transform:none;font-size:10px;">(optional — visual presence test)</span></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Color observed in comparator:</div>
+    <div class="oto-selector" id="lv-oto-selector">
+      <div class="oto-btn" data-val="none"   onclick="selectLVOTO(this)">✗ None<br><span style="font-size:9px;">No Cl</span></div>
+      <div class="oto-btn" data-val="clear"  onclick="selectLVOTO(this)">Clear<br><span style="font-size:9px;">Trace</span></div>
+      <div class="oto-btn" data-val="yellow" onclick="selectLVOTO(this)">Yellow<br><span style="font-size:9px;">Present</span></div>
+      <div class="oto-btn" data-val="orange" onclick="selectLVOTO(this)">Orange<br><span style="font-size:9px;">High</span></div>
+    </div>
+  </div>
+
+  <!-- ── PRIMARY VITALS — always visible ── -->
+  <div class="reading-section mt12" style="margin-top:10px;">
+    <div class="reading-section-title">Primary Vitals <span style="font-weight:500;text-transform:none;font-size:10px;">(FAS-DPD test)</span></div>
+    <div class="lv-primary-grid">
       <div class="r-cell highlight">
         <div class="r-lbl">FC</div>
-        <input class="r-input" type="number" step="0.2" id="s-fc" placeholder="—" oninput="calcCC()">
-        <div class="r-unit">FAS-DPD</div>
+        <input class="r-input" type="number" step="0.2" id="s-fc" placeholder="—" oninput="calcCC();calcDosing()">
+        <div class="r-unit">FAS-DPD ppm</div>
       </div>
+      <div class="r-cell highlight">
+        <div class="r-lbl">pH</div>
+        <input class="r-input" type="number" step="0.2" id="s-ph" placeholder="—" oninput="calcDosing()">
+        <div class="r-unit">7.2–7.8</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOSING PANEL — fires on FC/pH entry, expands with advanced data -->
+  <div id="dose-panel"></div>
+
+  <!-- ── ACCORDION: FULL TEST PANEL ── -->
+  <button type="button" class="lv-adv-toggle" id="lv-adv-toggle" onclick="toggleLogAdvanced()">
+    <span>🧪 Full Test Panel — Taylor K-2006-SALT</span>
+    <span class="lv-adv-arrow">▼</span>
+  </button>
+  <div class="lv-adv-body" id="lv-adv-body">
+    <div class="lv-adv-hint">Enter remaining readings for CSI, CC, and full dosing analysis</div>
+    <div class="reading-grid">
       <div class="r-cell">
         <div class="r-lbl">TC</div>
         <input class="r-input" type="number" step="0.2" id="s-tc" placeholder="—" oninput="calcCC()">
@@ -1098,11 +1172,6 @@ a{color:var(--accent);}
         <div class="r-lbl">CC <span style="font-size:8px;color:var(--hint);">auto</span></div>
         <input class="r-input" type="number" step="0.2" id="s-cc" placeholder="—" readonly style="color:var(--muted);cursor:default;">
         <div class="r-unit" id="cc-unit">TC − FC</div>
-      </div>
-      <div class="r-cell highlight">
-        <div class="r-lbl">pH</div>
-        <input class="r-input" type="number" step="0.2" id="s-ph" placeholder="—" oninput="calcDosing()">
-        <div class="r-unit">7.2–7.8</div>
       </div>
       <div class="r-cell">
         <div class="r-lbl">TA</div>
@@ -1131,9 +1200,6 @@ a{color:var(--accent);}
       </div>
     </div>
   </div>
-
-  <!-- DOSING PANEL -->
-  <div id="dose-panel"></div>
 
   <!-- WORK DONE -->
   <div class="reading-section mt12" style="margin-top:10px;">
@@ -1206,12 +1272,19 @@ a{color:var(--accent);}
 
   <div class="flex gap8 mt12" style="margin-top:10px;">
     <button class="btn btn-ghost" style="flex:1;" onclick="closeSheet('service-sheet')">Cancel</button>
-    <button class="btn btn-primary" style="flex:2;" id="svc-btn" onclick="submitService()">Submit &amp; Email Client</button>
+    <button class="btn btn-primary" style="flex:2;" id="svc-btn" onclick="submitLogVisit()">Submit &amp; Email Client</button>
   </div>
   <div id="svc-msg" style="font-size:12px;text-align:center;margin-top:7px;display:none;"></div>
 </div>
 </div>
 
+<!-- ══════════════════════════════════════════
+     QUICK LOG SHEET — v9: PRESERVED, NOT OPENED BY ROUTE BUTTONS
+     This sheet is intentionally kept in the DOM so that any direct
+     call to openQuickLog() (e.g. from legacy bookmarks or external
+     scripts) continues to work. The route card now opens the unified
+     Log Visit form (#service-sheet) instead.
+══════════════════════════════════════════ -->
 <!-- Quick Log Sheet -->
 <div class="overlay" id="quick-sheet">
 <div class="sheet">
@@ -1413,6 +1486,7 @@ let swgOn         = false;  // pool form toggle
 let otoSelected   = null;   // quick log oto
 let notesInReport  = false;  // whether notes appear in client email
 let chemAdded      = null;   // null=not set, true=yes, false=no (Full Log)
+let lvAdvOpen      = false;  // v9: Log Visit accordion state
 
 // ─────────────────────────────────────────────────────────────
 //  AUTH
@@ -2321,9 +2395,8 @@ function renderRoute(){
           ${lastLog&&!lastLog.skipped&&!lastLog.isQuickVisit&&(lastLog.fc||lastLog.ph)?`<div class="info-row"><span class="info-lbl">Last</span><span class="info-val mono" style="font-size:12px;">FC ${lastLog.fc||'—'} · pH ${lastLog.ph||'—'} · ${lastLog.date}</span></div>`:''}
         </div>
         ${pool.notes?`<div style="margin:0 14px 10px;padding:9px 12px;background:var(--accent-soft,#EFF6FF);border-left:3px solid var(--accent);border-radius:6px;font-size:12px;color:var(--text);line-height:1.4;"><span style="font-weight:700;font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;">&#128204; Notes</span><br>${pool.notes}</div>`:''}
-        <div class="pool-actions">
-          <button class="btn btn-primary btn-sm" onclick="openService('${pool.id}')">🧪 Full Log</button>
-          <button class="btn btn-teal btn-sm" onclick="openQuickLog('${pool.id}')">⚡ Quick</button>
+        <div class="pool-actions-lv">
+          <button class="btn btn-primary btn-sm" onclick="openLogVisit('${pool.id}')">📋 Log Visit</button>
           <button class="btn btn-ghost btn-sm" onclick="openSkip('${pool.id}')">⛔ Skip</button>
         </div>
         <div style="padding:0 14px 10px;display:flex;gap:6px;">
@@ -2383,7 +2456,7 @@ function dragDrop(e,targetId,section){
 function openService(poolId){
   const pool=pools.find(p=>p.id===poolId);
   document.getElementById('svc-pool-id').value=poolId;
-  document.getElementById('svc-title').textContent=`Full Log — ${pool.name}`;
+  document.getElementById('svc-title').textContent=`Log Visit — ${pool.name}`;
   ['s-fc','s-tc','s-cc','s-ph','s-ta','s-ch','s-cya','s-salt','s-temp','s-notes','s-cl-add','s-acid-add'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.value='';
   });
@@ -2432,6 +2505,168 @@ function openSkip(poolId){
   document.getElementById('skip-pool-id').value=poolId;
   document.getElementById('skip-notes').value='';
   openSheet('skip-sheet');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  v9 — LOG VISIT (unified entry point)
+//  Replaces separate openService() / openQuickLog() calls from
+//  the route card.  All field IDs and sheet IDs are unchanged so
+//  calcDosing() / calcCC() / submitService() work without
+//  modification.
+// ─────────────────────────────────────────────────────────────
+
+function openLogVisit(poolId){
+  // ── Collapse the advanced panel (default closed) ──────────
+  lvAdvOpen = false;
+  const toggle = document.getElementById('lv-adv-toggle');
+  const body   = document.getElementById('lv-adv-body');
+  if(toggle){ toggle.classList.remove('open'); }
+  if(body)  { body.classList.remove('open'); }
+
+  // ── Reset OTO selector ─────────────────────────────────────
+  otoSelected = null;
+  document.querySelectorAll('#lv-oto-selector .oto-btn')
+    .forEach(b => b.className = 'oto-btn');
+
+  // ── Delegate to existing openService() for all other state ─
+  //    (clears readings, pre-populates work chips, salt cell,
+  //     resets chemAdded, notesInReport, etc.)
+  openService(poolId);
+}
+
+function toggleLogAdvanced(){
+  lvAdvOpen = !lvAdvOpen;
+  const toggle = document.getElementById('lv-adv-toggle');
+  const body   = document.getElementById('lv-adv-body');
+  toggle.classList.toggle('open', lvAdvOpen);
+  body.classList.toggle('open',   lvAdvOpen);
+  // Re-run dosing so blocks appear immediately when panel opens
+  if(lvAdvOpen) calcDosing();
+}
+
+function selectLVOTO(el){
+  const val = el.dataset.val;
+  otoSelected = val;
+  document.querySelectorAll('#lv-oto-selector .oto-btn')
+    .forEach(b => b.className = 'oto-btn');
+  el.classList.add('selected-' + val);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  v9 — submitLogVisit()
+//
+//  Routing logic (UI only — data/email builders untouched):
+//
+//  FULL path  → accordion was opened AND at least one advanced
+//               field (TA, CH, CYA, or Temp) has a value.
+//               Delegates directly to the existing submitService()
+//               which reads from the same form IDs as before.
+//
+//  BASIC path → accordion closed OR all advanced fields blank.
+//               Saves a log with isQuickVisit:true, captures FC
+//               and pH (new in v9), and uses the same Quick Visit
+//               email template so the client receives the quick-
+//               visit style report.
+//
+//  Neither path alters any state-management call, cloud sync
+//  trigger, ChemEngine call, or email builder function.
+// ─────────────────────────────────────────────────────────────
+async function submitLogVisit(){
+
+  // Helper: read a numeric value from the service-sheet (mirrors
+  // the scoped reader inside submitService — DO NOT inline there)
+  const _sheet = document.getElementById('service-sheet');
+  const gv = id => {
+    const el = _sheet ? _sheet.querySelector('[id="' + id + '"]')
+                      : document.getElementById(id);
+    if(!el || el.value === '') return null;
+    const v = parseFloat(el.value);
+    return isNaN(v) ? null : v;
+  };
+
+  // ── Detect mode — data presence wins over accordion visual state ──
+  // DO NOT gate on lvAdvOpen: a user may fill advanced fields, close
+  // the accordion to tidy the screen, then submit.  Routing must be
+  // driven by what is IN the fields, not whether the panel is open.
+  const ta   = gv('s-ta'),  ch   = gv('s-ch');
+  const cya  = gv('s-cya'), temp = gv('s-temp');
+  const hasAdvanced = (ta !== null || ch !== null || cya !== null || temp !== null);
+
+  if(hasAdvanced){
+    // ── FULL LOG PATH ─────────────────────────────────────────
+    // submitService() reads the same sheet / same IDs → no change
+    await submitService();
+    return;
+  }
+
+  // ── BASIC (Quick-style) PATH ──────────────────────────────
+  // Guard: chemicals added must be answered (same check as Full)
+  if(chemAdded === null){
+    document.getElementById('chem-added-err').style.display = 'block';
+    return;
+  }
+
+  const poolId = document.getElementById('svc-pool-id').value;
+  const pool   = pools.find(p => p.id === poolId);
+  const notes  = document.getElementById('s-notes').value;
+  const work   = [...document.querySelectorAll('#work-chips input:checked')].map(c => c.value);
+
+  // Build log — exact Quick Log structure + fc/ph captured from
+  // the new primary-vitals section (v9 extension; nulls are still
+  // valid for poolStatus() which ignores them on isQuickVisit logs)
+  const log = {
+    id:             Date.now().toString(),
+    poolId,
+    date:           localDateStr(),
+    isQuickVisit:   true,
+    otos:           otoSelected || 'not-done',
+    work,
+    notes,
+    skipped:        false,
+    chemicalsAdded: chemAdded,
+    fc:   gv('s-fc'),   // v9: capture primary vitals even on basic submit
+    ph:   gv('s-ph'),
+    tc:   null, cc: null, ta: null, ch: null,
+    cya:  null, salt: null, temp: null
+  };
+
+  // ── State management (verbatim from submitQuickLog) ──────
+  logs.push(log);
+  S.set('logs', logs);
+  triggerCloudBackup(); // side effect: async, non-blocking
+
+  // ── Email (verbatim from submitQuickLog) ──────────────────
+  if(emailCfg.pubKey && emailCfg.svcId && pool && pool.email){
+    const btn = document.getElementById('svc-btn');
+    if(btn){ btn.innerHTML = '<span class="spinner"></span> Sending...'; btn.disabled = true; }
+    try{
+      const qlBody = buildQuickHTMLEmail(pool, log);
+      await emailjs.send(emailCfg.svcId, emailCfg.tplId, {
+        email:        pool.email,
+        to_email:     pool.email,
+        to_name:      pool.ownerName,
+        pool_name:    pool.name,
+        address:      pool.address,
+        service_date: log.date,
+        status:       'Quick Visit',
+        email_body:   qlBody,
+        biz_name:     settings.bizName || 'akaPoolCO Pool Services'
+      }, {publicKey: emailCfg.pubKey});
+    } catch(err){
+      const errText = err.text || err.message || JSON.stringify(err);
+      const msg = document.getElementById('svc-msg');
+      if(msg){ msg.textContent = '❌ Email failed: ' + errText; msg.style.color = 'var(--red)'; msg.style.display = 'block'; }
+      console.warn('Log Visit email failed:', errText);
+      if(btn){ btn.innerHTML = 'Submit &amp; Email Client'; btn.disabled = false; }
+      setTimeout(() => { closeSheet('service-sheet'); renderRoute(); renderDashboard(); updateBadge(); }, 4000);
+      return;
+    }
+    if(btn){ btn.innerHTML = 'Submit &amp; Email Client'; btn.disabled = false; }
+  }
+  closeSheet('service-sheet');
+  renderRoute();
+  renderDashboard();
+  updateBadge();
 }
 
 function selectOTO(el){
