@@ -3600,7 +3600,11 @@ function renderDashboard(){
     // v9.4: split formerly-cramped pairs into individual variables
     // v9.5 Fix 3: all labels use "Label: value" format throughout
     // ── Row 2 C3 — TA ───────────────────────────────────────────
-    const taVal     = r.ta!=null   ? `TA: ${r.ta} ppm`       : 'TA: —';
+    // v9.8: explicit Number.isFinite guard replaces the loose !=null check.
+    // Handles every falsy/invalid state (null, undefined, NaN, '') so the cell
+    // always shows '—' when the technician left TA blank on the latest log —
+    // never a stale number carried forward from an earlier full test.
+    const taVal = Number.isFinite(r.ta) ? `TA: ${r.ta} ppm` : 'TA: —';
     // ── Row 3 C2 — Temp (label was missing entirely in v9.4) ────
     const tempVal   = r.temp!=null ? `Temp: ${r.temp}°F`     : 'Temp: —';
     // ── Row 3 C3 — CYA ──────────────────────────────────────────
