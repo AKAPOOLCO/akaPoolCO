@@ -1141,7 +1141,7 @@ a{color:var(--accent);}
     <div class="lv-primary-grid">
       <div class="r-cell highlight">
         <div class="r-lbl">FC</div>
-        <input class="r-input" type="number" step="0.2" id="s-fc" placeholder="—" oninput="calcCC();calcDosing()">
+        <input class="r-input" type="number" step="0.2" id="s-fc" placeholder="—" oninput="calcDosing()">
         <div class="r-unit">FAS-DPD ppm</div>
       </div>
       <div class="r-cell highlight">
@@ -1164,7 +1164,7 @@ a{color:var(--accent);}
     <div class="reading-grid">
       <div class="r-cell">
         <div class="r-lbl">TC</div>
-        <input class="r-input" type="number" step="0.2" id="s-tc" placeholder="—" oninput="calcCC()">
+        <input class="r-input" type="number" step="0.2" id="s-tc" placeholder="—" oninput="calcDosing()">
         <div class="r-unit">ppm</div>
       </div>
       <div class="r-cell" id="cc-cell">
@@ -1938,24 +1938,17 @@ function trendHtml(trend,field){
 }
 
 function calcCC(){
-  const fcEl  = document.getElementById('s-fc');
-  const tcEl  = document.getElementById('s-tc');
+  // v11.3: calcCC() is now a pure colour-feedback function.
+  // The auto-fill logic (CC = TC − FC) was removed because it performed
+  // a calculation outside ChemEngine and silently wrote a derived value
+  // into the CC field before the tech had a chance to enter a real reading.
+  // CC is a direct FAS-DPD measurement — the tech reads it from the kit
+  // and types it in. ChemEngine.calcAll() receives exactly what was typed.
+  // fcEl and tcEl reads have been removed; this function no longer
+  // touches or depends on the FC or TC fields.
   const ccEl  = document.getElementById('s-cc');
   const ccUnit= document.getElementById('cc-unit');
   const ccCell= document.getElementById('cc-cell');
-
-  const fc = parseFloat(fcEl.value);
-  const tc = parseFloat(tcEl.value);
-
-  // v9.7: CC is now a direct manual entry field. Auto-fill from TC−FC only
-  // when the CC field is currently EMPTY — a non-destructive convenience that
-  // gives the tech a starting value without ever overwriting a reading they
-  // have already typed in. If the tech clears CC and re-enters TC or FC,
-  // the suggestion fires again cleanly.
-  if(!isNaN(fc) && !isNaN(tc) && ccEl.value === ''){
-    const ccVal = Math.max(0, Math.round((tc - fc) * 10) / 10);
-    ccEl.value  = ccVal;
-  }
 
   // Apply colour feedback based on whatever CC value is now present
   // (whether it came from the auto-fill above or was typed directly).
@@ -3559,7 +3552,6 @@ function renderDashboard(){
   const ptShort={plaster:'Plaster',vinyl:'Vinyl',fiberglass:'Glass'};
 
   document.getElementById('dash-list').innerHTML=filtered.length?filtered.map(pool=>{
-    const lastFull = getLastFull(pool.id);
     const lastAny  = getLL(pool.id);
     const s        = poolStatus(pool.id);
     const fcTrend  = getTrend(pool.id,'fc');
@@ -3570,30 +3562,24 @@ function renderDashboard(){
     const active   = pool.isActive!==false;
 
     // ── Latest readings for display and ChemEngine call ─────────
-    // v9.5 Fix 1: FC and pH come from _fSrc (most-recent any-type log).
-    // v9.9 Fix: TA also now reads from lastAny so that a quick visit
-    // (which saves ta:null) immediately clears the stale value that
-    // getLastFull() was holding from the previous full test.
-    // The root cause of the "TA: 70 stale" bug was that getLastFull
-    // filters out isQuickVisit logs, so lastFull.ta persisted as 70
-    // even after a quick visit that recorded ta:null.  Switching r.ta
-    // to lastAny?.ta breaks the "sticky traversal" completely.
-    // CH, CYA, Salt, Temp deliberately still use lastFull — those
-    // fields are never captured on a quick visit so lastFull is the
-    // correct source for them.
-    const _fSrc = lastAny && (!lastFull || lastAny.date >= lastFull.date)
-                  ? lastAny : lastFull;
+    // v11.1: ALL fields read from lastAny (the absolute newest log,
+    // any type). Quick OTO visits save every advanced field as null
+    // (line 2692), so submitting a quick visit immediately clears
+    // ALL dashboard cells — no stale data from a previous full test
+    // persists in any cell. Full tests populate every field so all
+    // cells render normally.  The _fSrc fallback and outer lastFull
+    // are no longer needed; getOverdue() creates its own lastFull
+    // internally and is unaffected.
     const r = {
-      fc:   _fSrc?.fc  !=null ? _fSrc.fc   : (lastFull ? lastFull.fc   : null),
-      ph:   _fSrc?.ph  !=null ? _fSrc.ph   : (lastFull ? lastFull.ph   : null),
-      tc:   lastFull ? lastFull.tc   : null,
-      cc:   lastFull ? lastFull.cc   : null,
-      // v9.9: use lastAny so quick-visit ta:null immediately shows '—'
-      ta:   lastAny?.ta ?? null,
-      ch:   lastFull ? lastFull.ch   : null,
-      cya:  lastFull ? lastFull.cya  : null,
-      salt: lastFull ? lastFull.salt : null,
-      temp: lastFull ? lastFull.temp : null,
+      fc:   lastAny?.fc   ?? null,
+      ph:   lastAny?.ph   ?? null,
+      tc:   lastAny?.tc   ?? null,
+      cc:   lastAny?.cc   ?? null,
+      ta:   lastAny?.ta   ?? null,
+      ch:   lastAny?.ch   ?? null,
+      cya:  lastAny?.cya  ?? null,
+      salt: lastAny?.salt ?? null,
+      temp: lastAny?.temp ?? null,
     };
 
     // ── CSI — same ChemEngine call as the service form ──────────
@@ -3619,8 +3605,21 @@ function renderDashboard(){
     // always shows '—' when the technician left TA blank on the latest log —
     // never a stale number carried forward from an earlier full test.
     const taVal = Number.isFinite(r.ta) ? `TA: ${r.ta} ppm` : 'TA: —';
-    // ── Row 3 C2 — Temp (label was missing entirely in v9.4) ────
-    const tempVal   = r.temp!=null ? `Temp: ${r.temp}°F`     : 'Temp: —';
+    // ── Row 3 C2 — OTO chlorine check result (v11.2) ────────────
+    // Replaces the Temp display cell. OTO is NOT a chemistry reading,
+    // so it reads lastAny.otos directly rather than coming from the r
+    // bundle. Labels mirror the otoMap used in buildQuickHTMLEmail()
+    // so the dashboard always shows the same text as the client email.
+    // 'not-done' and undefined (no log) both produce '' → blank cell.
+    // Note: r.temp remains in the r object and is still passed to
+    // ChemEngine.calcAll() for CSI computation — only the display is changed.
+    const _otoLabels = {
+      none:   'OTO: None ⚠️',
+      clear:  'OTO: Trace',
+      yellow: 'OTO: Present ✓',
+      orange: 'OTO: High',
+    };
+    const otoVal = _otoLabels[lastAny?.otos] || '';
     // ── Row 3 C3 — CYA ──────────────────────────────────────────
     const cyaVal    = r.cya!=null  ? `CYA: ${r.cya}`         : 'CYA: —';
     // ── Row 4 C2 — Salt (SWG) or CH (liquid) ────────────────────
@@ -3674,10 +3673,10 @@ function renderDashboard(){
           <span class="dg-meta">${taVal}</span>
         </div>
 
-        <!-- ROW 3: Schedule | Temp °F | CYA ppm -->
+        <!-- ROW 3: Schedule | OTO result | CYA ppm -->
         <div class="dg-c1">${schedHtml}</div>
         <div class="dg-c2">
-          <span class="dg-meta">${tempVal}</span>
+          ${otoVal?`<span class="dg-meta">${otoVal}</span>`:''}
         </div>
         <div class="dg-c3">
           <span class="dg-meta">${cyaVal}</span>
