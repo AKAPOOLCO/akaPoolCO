@@ -1664,6 +1664,32 @@ const ChemEngine = {
     return Math.max(cfg.min, Math.round((cya * cfg.ratio + (cfg.offset||0))*2)/2);
   },
 
+  // Suggested targetFC for pool profile UI — returns ppm (number)
+  // v11.51: wraps chlorineTarget() with a TFP-minimum floor so the auto-filled
+  // value never sits below the safety threshold we enforce in calcAll().
+  // Uses the same _TFP tables as calcAll(); defined here so the UI can call it
+  // without re-implementing the lookup.
+  // chlorineTarget() itself is unchanged — this is a pure additive wrapper.
+  suggestTargetFC(cya, isSWG, season){
+    const ratio = this.chlorineTarget(cya, isSWG, season);
+    // Inline TFP min lookup (mirrors _tfpMinFC inside calcAll — kept local to avoid scope issues)
+    const _liq = [[30,4],[40,5],[50,6],[60,8],[70,9],[80,11]];
+    const _swg = [[60,4],[70,5],[80,6]];
+    const tbl  = isSWG ? _swg : _liq;
+    let tfpMin = tbl[0][1];
+    if(cya && cya > tbl[0][0]){
+      if(cya >= tbl[tbl.length-1][0]){ tfpMin = tbl[tbl.length-1][1]; }
+      else {
+        for(let i=0;i<tbl.length-1;i++){
+          const [c0,f0]=tbl[i],[c1,f1]=tbl[i+1];
+          if(cya>=c0&&cya<=c1){ tfpMin=f0+(f1-f0)*(cya-c0)/(c1-c0); break; }
+        }
+      }
+    }
+    // Round tfpMin to nearest 0.5, then take the higher of ratio vs TFP floor
+    return Math.max(ratio, Math.round(tfpMin * 2) / 2);
+  },
+
   // Chlorine dose — returns oz (number)
   chlorineDose(fc, targetFC, vol, strength, minDose){
     if(fc>=targetFC) return 0;
@@ -1850,14 +1876,33 @@ const ChemEngine = {
     const csiVal    = this.csi(ph, temp, ta, ch, cya);
     const csiResult = this.csiStatus(csiVal);
 
-    // FC status label — thresholds scale with target (TFP-correct, no hardcoded cap)
-    // HIGH threshold = targetFC * 1.5 (well above ideal) or CYA * 0.4 (shock level),
-    // whichever is higher, ensuring CYA 80 pools (targetFC=10) aren't falsely flagged.
+    // FC status label — TFP-accurate minimums keyed to CYA and pool type (v11.5)
+    // TFP minimum FC for liquid chlorine pools (ppm), by CYA level:
+    //   CYA 30→4, 40→5, 50→6, 60→8, 70→9, 80→11
+    // TFP minimum FC for SWG pools (ppm), by CYA level:
+    //   CYA 60→4, 70→5, 80→6
+    // Values between table breakpoints are linearly interpolated.
+    // CRITICAL = fc below 50% of TFP minimum (dangerously under-protected)
+    // LOW      = fc below TFP minimum but above 50%
+    // HIGH threshold = targetFC * 1.5 or CYA * 0.4 (shock level), whichever is higher.
+    const _TFP_MIN_LIQUID = [[30,4],[40,5],[50,6],[60,8],[70,9],[80,11]];
+    const _TFP_MIN_SWG    = [[60,4],[70,5],[80,6]];
+    function _tfpMinFC(cyaVal, swg) {
+      const tbl = swg ? _TFP_MIN_SWG : _TFP_MIN_LIQUID;
+      if(!cyaVal || cyaVal <= tbl[0][0])            return tbl[0][1];
+      if(cyaVal >= tbl[tbl.length-1][0])            return tbl[tbl.length-1][1];
+      for(let i=0; i<tbl.length-1; i++){
+        const [c0,f0]=tbl[i], [c1,f1]=tbl[i+1];
+        if(cyaVal>=c0 && cyaVal<=c1) return f0+(f1-f0)*(cyaVal-c0)/(c1-c0);
+      }
+      return tbl[0][1];
+    }
+    const fcMinTFP       = _tfpMinFC(cya, isSWG);
     const fcHighThreshold = Math.max(targetFC * 1.5, (cya||0) * 0.4);
     let fcStatus = 'OK';
     if(fc!=null){
-      if(fc < 2)                    fcStatus = 'CRITICAL';
-      else if(fc < 4)               fcStatus = 'LOW';
+      if(fc < fcMinTFP * 0.5)       fcStatus = 'CRITICAL';
+      else if(fc < fcMinTFP)        fcStatus = 'LOW';
       else if(fc > fcHighThreshold) fcStatus = 'HIGH';
     }
 
@@ -1937,6 +1982,8 @@ function trendHtml(trend,field){
   return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
+// v11.51: suggestTargetFC() added to ChemEngine — pool profile UI now suggests TFP-floored targetFC.
+// v11.5: FC thresholds now TFP CYA-aware (replaces hardcoded fc<2/fc<4).
 // v11.4: calcCC() is now a pure colour-feedback function.
 // The auto-fill that computed TC−FC and wrote it into s-cc has been
 // removed — CC is a direct measurement from the test kit and must
@@ -2037,28 +2084,32 @@ function calcDosing(){
   // ── Chlorine block ──
   if(fc!==null){
     if(isSWG){
-      // v9.2 Fix 1: For SWG CRITICAL (fc<2), ChemEngine returns clDose=0 because the pool
+      // v9.2 Fix 1: For SWG CRITICAL, ChemEngine returns clDose=0 because the pool
       // is salt-system. Compute an equivalent liquid-chlorine shock dose for display only —
       // this is never written to the log. The formula is identical to the liquid-pool path.
-      const _swgCriticalDose = fc<2
+      // v11.5: CRITICAL is now driven by fcStatus (TFP CYA-aware) instead of hardcoded fc<2.
+      const isCrit = fcStatus === 'CRITICAL';
+      const _swgCriticalDose = isCrit
         ? ChemEngine.chlorineDose(fc, targetFC, vol, settings.clStrength, settings.minDose)
         : 0;
-      const fcCls  = fc<2?'d-alert':fc<targetFC?'d-warn':'d-teal';
-      const fcTcls = fc<2?'c-alert':fc<targetFC?'c-warn':'c-teal';
+      const fcCls  = isCrit?'d-alert':fc<targetFC?'d-warn':'d-teal';
+      const fcTcls = isCrit?'c-alert':fc<targetFC?'c-warn':'c-teal';
       html+=`<div class="dose-block ${fcCls}">
-        <div class="dose-title ${fcTcls}">${fc<2?'🚨 CRITICAL FC':'⚡ SWG — Salt System'}</div>
+        <div class="dose-title ${fcTcls}">${isCrit?'🚨 CRITICAL FC':'⚡ SWG — Salt System'}</div>
         <div class="dose-row"><span>Current FC</span><span class="dose-val">${fc} ppm</span></div>
         <div class="dose-row"><span>Target FC</span><span class="dose-val">${targetFC} ppm</span></div>
         <div class="dose-row"><span>Action</span><span class="dose-val">${fc>=targetFC?'Generator managing':'Boost SWG output'}</span></div>
         ${getTrend(poolId,'fc')?`<div class="dose-row"><span>FC trend</span><span>${trendHtml(getTrend(poolId,'fc'),'fc')}</span></div>`:''}
-        ${fc<2?`<div class="dose-note">CRITICAL — SWG cannot recover this fast. Manually shock pool immediately.</div>`:''}
+        ${isCrit?`<div class="dose-note">CRITICAL — SWG cannot recover this fast. Manually shock pool immediately.</div>`:''}
         ${_swgCriticalDose>0?`<div class="dose-row"><span><strong>Shock dose needed</strong></span><span class="dose-val"><strong>${_swgCriticalDose} oz liquid Cl</strong></span></div>`:''}
       </div>`;
     } else {
-      const fcCls  = fc<2?'d-alert':clDose>0?'d-warn':'d-ok';
-      const fcTcls = fc<2?'c-alert':clDose>0?'c-warn':'c-ok';
+      // v11.5: CRITICAL driven by fcStatus (TFP CYA-aware) instead of hardcoded fc<2.
+      const isCrit = fcStatus === 'CRITICAL';
+      const fcCls  = isCrit?'d-alert':clDose>0?'d-warn':'d-ok';
+      const fcTcls = isCrit?'c-alert':clDose>0?'c-warn':'c-ok';
       html+=`<div class="dose-block ${fcCls}">
-        <div class="dose-title ${fcTcls}">${fc<2?'🚨 CRITICAL — Low Chlorine':clDose>0?'⚠️ Add Chlorine':'✅ Chlorine OK'}</div>
+        <div class="dose-title ${fcTcls}">${isCrit?'🚨 CRITICAL — Low Chlorine':clDose>0?'⚠️ Add Chlorine':'✅ Chlorine OK'}</div>
         <div class="dose-row"><span>Current FC</span><span class="dose-val">${fc} ppm</span></div>
         <div class="dose-row"><span>Target FC</span><span class="dose-val">${targetFC} ppm</span></div>
         ${clDose>0?`<div class="dose-row"><span><strong>Dose needed</strong></span><span class="dose-val"><strong>${clDose} oz liquid Cl</strong></span></div>`:''}
@@ -3035,11 +3086,14 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
   const _tgtCH  = pool.targetCH  || _defCH;
   const _bicarbDoseEmail = ta!=null ? ChemEngine.bicarbDose(ta, _tgtTA, _vol) : 0;
   const _chDoseEmail     = ch!=null ? ChemEngine.chDose(ch,  _tgtCH, _vol) : 0;
+  // v11.5: CRITICAL detection now uses fcStatus (TFP CYA-aware) instead of fc<2.
+  // fcStatus is passed in as a parameter from submitService() → ChemEngine.calcAll().
+  const _isCritEmail = fcStatus === 'CRITICAL';
   // For SWG CRITICAL (clDose=0 because isSWG), compute equivalent liquid dose for display
-  const _criticalDoseEmail = (fc!=null && fc<2 && clDose===0)
+  const _criticalDoseEmail = (_isCritEmail && clDose===0)
     ? ChemEngine.chlorineDose(fc, pool.targetFC||6, _vol, settings.clStrength, settings.minDose) : 0;
   // Effective FC dose for the action column (uses critical dose when applicable)
-  const _fcActionDose = (fc!=null && fc<2) ? (_criticalDoseEmail || clDose) : clDose;
+  const _fcActionDose = _isCritEmail ? (_criticalDoseEmail || clDose) : clDose;
 
   // ── CSI status colours ──
   const csiNum=csi!==null?(csi>0?'+':'')+csi:'N/A';
@@ -3147,8 +3201,8 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
         ${[
           {lbl:'Free Chlorine (FC)', val:fc, unit:'ppm', target:pool.targetFC||6,
            ok:fc!=null&&fc>=(pool.targetFC||6)*0.8&&fc<=fcHighThreshold,
-           warn:fc!=null&&(fc<2||fc>fcHighThreshold),
-           action: fc!=null&&fc<2
+           warn:fc!=null&&(_isCritEmail||fc>fcHighThreshold),
+           action: _isCritEmail
              ? (_fcActionDose>0?`🚨 CRITICAL — Add ${_fcActionDose} oz liquid Cl (shock)`:'🚨 CRITICAL — Shock pool immediately')
              : clDose>0?`Add ${clDose} oz liquid Cl`
              : fc!=null&&fc>fcHighThreshold?'High — do not add chlorine':'OK'},
@@ -3936,12 +3990,13 @@ function setPoolSeason(s){
   document.getElementById('p-season').value = s;
   document.getElementById('ps-summer').classList.toggle('active', s==='summer');
   document.getElementById('ps-winter').classList.toggle('active', s==='winter');
-  // Auto-fill Target FC using ChemEngine.chlorineTarget
+  // Auto-fill Target FC using ChemEngine.suggestTargetFC (TFP-floored, v11.51)
   const isSWG = swgOn;
   // Safe parse: 0 is a valid CYA value; isNaN guard prevents ||null trap
   const _cyaRaw = parseFloat(document.getElementById('p-tcya').value);
   const cya     = isNaN(_cyaRaw) ? null : _cyaRaw;
-  const fc    = ChemEngine.chlorineTarget(cya, isSWG, s);
+  // v11.51: suggestTargetFC ensures suggestion never falls below TFP minimum
+  const fc    = ChemEngine.suggestTargetFC(cya, isSWG, s);
   document.getElementById('p-tfc').value = fc;
 }
 
@@ -3973,10 +4028,10 @@ function toggleSWG(){
   if(swgOn){
     document.getElementById('p-tcya').value = '70';
     if(!document.getElementById('p-salt').value) document.getElementById('p-salt').value='3200';
-    if(season) document.getElementById('p-tfc').value = ChemEngine.chlorineTarget(70, true, season);
+    if(season) document.getElementById('p-tfc').value = ChemEngine.suggestTargetFC(70, true, season);
   } else {
     document.getElementById('p-tcya').value = '40';
-    if(season) document.getElementById('p-tfc').value = ChemEngine.chlorineTarget(40, false, season);
+    if(season) document.getElementById('p-tfc').value = ChemEngine.suggestTargetFC(40, false, season);
   }
 }
 function savePool(){
@@ -4341,6 +4396,7 @@ document.addEventListener('DOMContentLoaded', init);
 //  Golden values are locked from the 8/8 TFP audit run on
 //  2025-04-15 against ChemEngine v4. Do not change them without
 //  re-running the full test suite and updating all three entries.
+//  v11.5: FC thresholds now CYA-aware (TFP table); test 2 fcStatus updated LOW→CRITICAL.
 // ═════════════════════════════════════════════════════════════
 const QA = {
 
@@ -4351,7 +4407,7 @@ const QA = {
       pool: { volume:15000, isSWG:true, targetFC:5, targetPH:7.4,
                saltTarget:3200, targetCYA:70 },
       r:    { fc:5, ph:7.4, ta:90, ch:350, cya:70, salt:3200, temp:82 },
-      expect: { csiVal:0.04, clDose:0, fcStatus:'OK' }   // fc=5 → OK (fcStatus uses fixed thresholds fc<4=LOW, not targetFC)
+      expect: { csiVal:0.04, clDose:0, fcStatus:'OK' }   // fc=5 = TFP min for SWG CYA70 → exactly at minimum → OK
     },
     {
       // Low-FC liquid chlorine pool — should calculate a real dose
@@ -4359,7 +4415,7 @@ const QA = {
       pool: { volume:15000, isSWG:false, targetFC:7, targetPH:7.4,
                saltTarget:null, targetCYA:50 },
       r:    { fc:2, ph:7.4, ta:80, ch:250, cya:50, salt:null, temp:80 },
-      expect: { csiVal:-0.15, clDose:98, fcStatus:'LOW' }  // fc=2, targetFC=7 (TFP CYA50 liquid summer)
+      expect: { csiVal:-0.15, clDose:98, fcStatus:'CRITICAL' }  // fc=2, TFP min for CYA50 liquid=6 → fc<3 (50% of 6) → CRITICAL
     },
     {
       // Corrosive winter water — CSI must flag corrosive
@@ -4367,7 +4423,7 @@ const QA = {
       pool: { volume:15000, isSWG:false, targetFC:4, targetPH:7.4,
                saltTarget:null, targetCYA:40 },
       r:    { fc:3, ph:7.2, ta:80, ch:225, cya:40, salt:null, temp:55 },
-      expect: { csiVal:-0.70, clDose:19, fcStatus:'LOW' }
+      expect: { csiVal:-0.70, clDose:19, fcStatus:'LOW' }   // fc=3, TFP min for CYA40 liquid=5 → 3≥2.5 (50% of 5) but <5 → LOW
     },
     {
       // Acid dose — high pH liquid pool (ΔpH 0.4, TA 80, CYA 50, 10k gal)
