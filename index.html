@@ -1169,7 +1169,7 @@ a{color:var(--accent);}
       </div>
       <div class="r-cell" id="cc-cell">
         <div class="r-lbl">CC</div>
-        <input class="r-input" type="number" step="0.1" id="s-cc" placeholder="0.0" oninput="calcCC();calcDosing()">
+        <input class="r-input" type="number" step="0.1" id="s-cc" placeholder="—" oninput="calcCC();calcDosing()">
         <div class="r-unit" id="cc-unit">ppm</div>
       </div>
       <div class="r-cell">
@@ -3517,8 +3517,15 @@ function dashTrendHtml(field, trend){
 
 function renderDashboard(){
   const today=localDateStr();
-  const getLL=id=>[...logs].filter(l=>l.poolId===id).sort((a,b)=>b.date.localeCompare(a.date))[0];
-  const getLastFull=id=>[...logs].filter(l=>l.poolId===id&&!l.skipped&&!l.isQuickVisit).sort((a,b)=>b.date.localeCompare(a.date))[0];
+  // v11: id tiebreaker added to both helpers — log ids are Date.now() strings
+  // so a higher id always means "submitted more recently". Without this, two
+  // logs on the same calendar day sort non-deterministically, causing getLL
+  // to return a same-day quick visit instead of a later full test, which
+  // made r.ta come back null and left TA + CSI blank on the dashboard.
+  const getLL       = id=>[...logs].filter(l=>l.poolId===id)
+                        .sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id))[0];
+  const getLastFull = id=>[...logs].filter(l=>l.poolId===id&&!l.skipped&&!l.isQuickVisit)
+                        .sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id))[0];
   const sOrder={red:0,yellow:1,teal:2,gray:3,green:4};
 
   function getOverdue(pool){
