@@ -1937,21 +1937,19 @@ function trendHtml(trend,field){
   return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
+// v11.4: calcCC() is now a pure colour-feedback function.
+// The auto-fill that computed TC−FC and wrote it into s-cc has been
+// removed — CC is a direct measurement from the test kit and must
+// always come from the technician, not from a UI pre-computation.
+// FC (s-fc) and TC (s-tc) now both call only calcDosing() on input;
+// ChemEngine receives exactly what the tech typed and nothing else.
 function calcCC(){
-  // v11.3: calcCC() is now a pure colour-feedback function.
-  // The auto-fill logic (CC = TC − FC) was removed because it performed
-  // a calculation outside ChemEngine and silently wrote a derived value
-  // into the CC field before the tech had a chance to enter a real reading.
-  // CC is a direct FAS-DPD measurement — the tech reads it from the kit
-  // and types it in. ChemEngine.calcAll() receives exactly what was typed.
-  // fcEl and tcEl reads have been removed; this function no longer
-  // touches or depends on the FC or TC fields.
   const ccEl  = document.getElementById('s-cc');
   const ccUnit= document.getElementById('cc-unit');
   const ccCell= document.getElementById('cc-cell');
 
-  // Apply colour feedback based on whatever CC value is now present
-  // (whether it came from the auto-fill above or was typed directly).
+  // Apply colour feedback based on whatever the tech has typed in CC.
+  // No reads from s-fc or s-tc — no math, no external DOM writes.
   const currentCC = parseFloat(ccEl.value);
   if(!isNaN(currentCC)){
     if(currentCC <= 0.5){
@@ -1974,7 +1972,7 @@ function calcCC(){
     if(ccUnit) ccUnit.textContent = 'ppm';
   }
 
-  // Always re-run full dosing panel after CC updates
+  // Refresh dosing panel after CC changes
   calcDosing();
 }
 
