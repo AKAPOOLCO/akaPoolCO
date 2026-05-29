@@ -3563,11 +3563,17 @@ function renderDashboard(){
     const active   = pool.isActive!==false;
 
     // ── Latest readings for display and ChemEngine call ─────────
-    // v9.5 Fix 1: FC and pH are captured on BOTH quick and full visits
-    // since v9.1. _fSrc is whichever log is more recent so the dashboard
-    // always shows the freshest FC/pH reading, even when it came from a
-    // quick visit. All other readings (TA, CH, CYA, Salt, Temp) still
-    // require a full test log and fall back to null when unavailable.
+    // v9.5 Fix 1: FC and pH come from _fSrc (most-recent any-type log).
+    // v9.9 Fix: TA also now reads from lastAny so that a quick visit
+    // (which saves ta:null) immediately clears the stale value that
+    // getLastFull() was holding from the previous full test.
+    // The root cause of the "TA: 70 stale" bug was that getLastFull
+    // filters out isQuickVisit logs, so lastFull.ta persisted as 70
+    // even after a quick visit that recorded ta:null.  Switching r.ta
+    // to lastAny?.ta breaks the "sticky traversal" completely.
+    // CH, CYA, Salt, Temp deliberately still use lastFull — those
+    // fields are never captured on a quick visit so lastFull is the
+    // correct source for them.
     const _fSrc = lastAny && (!lastFull || lastAny.date >= lastFull.date)
                   ? lastAny : lastFull;
     const r = {
@@ -3575,7 +3581,8 @@ function renderDashboard(){
       ph:   _fSrc?.ph  !=null ? _fSrc.ph   : (lastFull ? lastFull.ph   : null),
       tc:   lastFull ? lastFull.tc   : null,
       cc:   lastFull ? lastFull.cc   : null,
-      ta:   lastFull ? lastFull.ta   : null,
+      // v9.9: use lastAny so quick-visit ta:null immediately shows '—'
+      ta:   lastAny?.ta ?? null,
       ch:   lastFull ? lastFull.ch   : null,
       cya:  lastFull ? lastFull.cya  : null,
       salt: lastFull ? lastFull.salt : null,
