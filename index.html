@@ -1573,6 +1573,10 @@ const ChemEngine = {
       chlorine: { summer: { ratio: 0.10, offset: 2, min: 3 }, winter: { ratio: 0.07, offset: 1, min: 3 } },
       swg:      { summer: { ratio: 0.075, offset: 0, min: 5 }, winter: { ratio: 0.05,  offset: 0, min: 3 } }
     },
+    // TFP minimum FC by CYA — single source of truth used by calcAll() and suggestTargetFC()
+    // Update here ONLY if TFP revises their published recommendations.
+    TFP_MIN_LIQUID: [[30,4],[40,5],[50,6],[60,8],[70,9],[80,11]],
+    TFP_MIN_SWG:    [[60,4],[70,5],[80,6]],
 
     // Calcium hardness dosing — calcium chloride (77–80% granular)
     CH_PPM_PER_LB_10K:     8,      // 1 lb calcium chloride raises CH ~8 ppm per 10,000 gal
@@ -1664,6 +1668,20 @@ const ChemEngine = {
     return Math.max(cfg.min, Math.round((cya * cfg.ratio + (cfg.offset||0))*2)/2);
   },
 
+  // TFP minimum FC lookup — single shared method for calcAll() and suggestTargetFC()
+  // v11.52: extracted from inline duplicates in both functions; reads from factors.TFP_MIN_*
+  // so any future TFP table revision is a one-line edit in factors only.
+  getTfpMinFC(cya, isSWG){
+    const tbl = isSWG ? this.factors.TFP_MIN_SWG : this.factors.TFP_MIN_LIQUID;
+    if(!cya || cya <= tbl[0][0])          return tbl[0][1];
+    if(cya >= tbl[tbl.length-1][0])       return tbl[tbl.length-1][1];
+    for(let i=0; i<tbl.length-1; i++){
+      const [c0,f0]=tbl[i], [c1,f1]=tbl[i+1];
+      if(cya>=c0 && cya<=c1) return f0+(f1-f0)*(cya-c0)/(c1-c0);
+    }
+    return tbl[0][1];
+  },
+
   // Suggested targetFC for pool profile UI — returns ppm (number)
   // v11.51: wraps chlorineTarget() with a TFP-minimum floor so the auto-filled
   // value never sits below the safety threshold we enforce in calcAll().
@@ -1671,22 +1689,8 @@ const ChemEngine = {
   // without re-implementing the lookup.
   // chlorineTarget() itself is unchanged — this is a pure additive wrapper.
   suggestTargetFC(cya, isSWG, season){
-    const ratio = this.chlorineTarget(cya, isSWG, season);
-    // Inline TFP min lookup (mirrors _tfpMinFC inside calcAll — kept local to avoid scope issues)
-    const _liq = [[30,4],[40,5],[50,6],[60,8],[70,9],[80,11]];
-    const _swg = [[60,4],[70,5],[80,6]];
-    const tbl  = isSWG ? _swg : _liq;
-    let tfpMin = tbl[0][1];
-    if(cya && cya > tbl[0][0]){
-      if(cya >= tbl[tbl.length-1][0]){ tfpMin = tbl[tbl.length-1][1]; }
-      else {
-        for(let i=0;i<tbl.length-1;i++){
-          const [c0,f0]=tbl[i],[c1,f1]=tbl[i+1];
-          if(cya>=c0&&cya<=c1){ tfpMin=f0+(f1-f0)*(cya-c0)/(c1-c0); break; }
-        }
-      }
-    }
-    // Round tfpMin to nearest 0.5, then take the higher of ratio vs TFP floor
+    const ratio  = this.chlorineTarget(cya, isSWG, season);
+    const tfpMin = this.getTfpMinFC(cya, isSWG);  // v11.52: uses shared method
     return Math.max(ratio, Math.round(tfpMin * 2) / 2);
   },
 
@@ -1877,27 +1881,11 @@ const ChemEngine = {
     const csiResult = this.csiStatus(csiVal);
 
     // FC status label — TFP-accurate minimums keyed to CYA and pool type (v11.5)
-    // TFP minimum FC for liquid chlorine pools (ppm), by CYA level:
-    //   CYA 30→4, 40→5, 50→6, 60→8, 70→9, 80→11
-    // TFP minimum FC for SWG pools (ppm), by CYA level:
-    //   CYA 60→4, 70→5, 80→6
-    // Values between table breakpoints are linearly interpolated.
+    // TFP tables live in factors.TFP_MIN_LIQUID / TFP_MIN_SWG (v11.52 DRY refactor).
     // CRITICAL = fc below 50% of TFP minimum (dangerously under-protected)
     // LOW      = fc below TFP minimum but above 50%
     // HIGH threshold = targetFC * 1.5 or CYA * 0.4 (shock level), whichever is higher.
-    const _TFP_MIN_LIQUID = [[30,4],[40,5],[50,6],[60,8],[70,9],[80,11]];
-    const _TFP_MIN_SWG    = [[60,4],[70,5],[80,6]];
-    function _tfpMinFC(cyaVal, swg) {
-      const tbl = swg ? _TFP_MIN_SWG : _TFP_MIN_LIQUID;
-      if(!cyaVal || cyaVal <= tbl[0][0])            return tbl[0][1];
-      if(cyaVal >= tbl[tbl.length-1][0])            return tbl[tbl.length-1][1];
-      for(let i=0; i<tbl.length-1; i++){
-        const [c0,f0]=tbl[i], [c1,f1]=tbl[i+1];
-        if(cyaVal>=c0 && cyaVal<=c1) return f0+(f1-f0)*(cyaVal-c0)/(c1-c0);
-      }
-      return tbl[0][1];
-    }
-    const fcMinTFP       = _tfpMinFC(cya, isSWG);
+    const fcMinTFP        = this.getTfpMinFC(cya, isSWG);  // v11.52: shared method
     const fcHighThreshold = Math.max(targetFC * 1.5, (cya||0) * 0.4);
     let fcStatus = 'OK';
     if(fc!=null){
@@ -1982,6 +1970,7 @@ function trendHtml(trend,field){
   return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
+// v11.52: DRY refactor — TFP tables moved to factors; getTfpMinFC() shared method replaces inline duplicates.
 // v11.51: suggestTargetFC() added to ChemEngine — pool profile UI now suggests TFP-floored targetFC.
 // v11.5: FC thresholds now TFP CYA-aware (replaces hardcoded fc<2/fc<4).
 // v11.4: calcCC() is now a pure colour-feedback function.
