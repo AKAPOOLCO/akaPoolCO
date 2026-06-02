@@ -1579,7 +1579,7 @@ const ChemEngine = {
     TFP_MIN_SWG:    [[60,4],[70,5],[80,6]],
 
     // Calcium hardness dosing — calcium chloride (77–80% granular)
-    CH_PPM_PER_LB_10K:     8,      // 1 lb calcium chloride raises CH ~8 ppm per 10,000 gal
+    CH_PPM_PER_LB_10K:     8.3,    // v11.7: 1 lb 77% CaCl2 raises CH ~8.3 ppm per 10,000 gal (TFP: 1.2 lbs per 10 ppm per 10k gal)
     DEFAULT_TARGET_CH:     250,    // default CH target for non-SWG pools (ppm)
     DEFAULT_TARGET_CH_SWG: 350,    // default CH target for SWG pools (ppm)
 
@@ -1710,14 +1710,11 @@ const ChemEngine = {
     // Adjusted TA (Carbonate Alkalinity) — matches TFP CSI logic (same CYA correction)
     const adjTA = cya ? Math.max(1, ta - (cya / 3)) : Math.max(1, ta);
 
-    // Buffer factor: higher TA requires more acid to move pH
-    const bufferFactor = 0.12 + (adjTA / 200);
-
-    // Nonlinear impact: larger pH drops require disproportionately more acid
-    const phImpact = Math.pow(deltaPH, 1.3);
-
-    // Multiplier of 150 calibrated for 31.45% Muriatic Acid to ~92% PoolMath parity
-    const baseDose = phImpact * bufferFactor * (vol / 10000) * 150;
+    // v11.7: TFP/PoolMath linear formula for 31.45% muriatic acid.
+    // oz = (vol/10k) × deltaPH × (adjTA×0.4 + 4.4)
+    // Replaces prior nonlinear model (bufferFactor + phImpact^1.3) which
+    // over-dosed by ~68% vs PoolMath at typical TA 60–90 ranges.
+    const baseDose = (vol / 10000) * deltaPH * (adjTA * 0.4 + 4.4);
 
     // Safety cap: max 64 oz per 10k gal per visit (prevents aggressive single corrections)
     const maxSafe = (vol / 10000) * 64;
@@ -1970,6 +1967,11 @@ function trendHtml(trend,field){
   return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
+// v11.7: acidDose() replaced nonlinear formula (bufferFactor+phImpact^1.3) with TFP/PoolMath
+//        linear model: oz=(vol/10k)×deltaPH×(adjTA×0.4+4.4). Fixes ~68% over-dose vs PoolMath.
+//        CH_PPM_PER_LB_10K updated 8→8.3 (TFP 77% CaCl2 standard: 1.2 lbs/10ppm/10k gal).
+//        QA golden acidDose expectations updated: test4 20→12, test5 58→32.
+// v11.6: Fix SWG FC banner title — was 'SWG — Salt System', now 'SWG — Free Chlorine'.
 // v11.52: DRY refactor — TFP tables moved to factors; getTfpMinFC() shared method replaces inline duplicates.
 // v11.51: suggestTargetFC() added to ChemEngine — pool profile UI now suggests TFP-floored targetFC.
 // v11.5: FC thresholds now TFP CYA-aware (replaces hardcoded fc<2/fc<4).
@@ -2084,7 +2086,7 @@ function calcDosing(){
       const fcCls  = isCrit?'d-alert':fc<targetFC?'d-warn':'d-teal';
       const fcTcls = isCrit?'c-alert':fc<targetFC?'c-warn':'c-teal';
       html+=`<div class="dose-block ${fcCls}">
-        <div class="dose-title ${fcTcls}">${isCrit?'🚨 CRITICAL FC':'⚡ SWG — Salt System'}</div>
+        <div class="dose-title ${fcTcls}">${isCrit?'🚨 CRITICAL FC':'⚡ SWG — Free Chlorine'}</div>
         <div class="dose-row"><span>Current FC</span><span class="dose-val">${fc} ppm</span></div>
         <div class="dose-row"><span>Target FC</span><span class="dose-val">${targetFC} ppm</span></div>
         <div class="dose-row"><span>Action</span><span class="dose-val">${fc>=targetFC?'Generator managing':'Boost SWG output'}</span></div>
@@ -4416,21 +4418,23 @@ const QA = {
     },
     {
       // Acid dose — high pH liquid pool (ΔpH 0.4, TA 80, CYA 50, 10k gal)
-      // Expected: 20 oz muriatic acid. Validates nonlinear acid model + adjTA correction.
+      // v11.7: Expected 12 oz (was 20 — prior value matched broken nonlinear formula).
+      // TFP/PoolMath linear: (10000/10000) × 0.4 × (63.33×0.4 + 4.4) = 11.89 → rounds to 12.
       name: 'Acid Dose High pH Liquid',
       pool: { volume:10000, isSWG:false, targetFC:7, targetPH:7.4,
                saltTarget:null, targetCYA:50 },
       r:    { fc:7, ph:7.8, ta:80, ch:250, cya:50, salt:null, temp:80 },
-      expect: { acidDose:20 }
+      expect: { acidDose:12 }
     },
     {
       // Acid dose — high pH SWG pool (ΔpH 0.6, TA 100, CYA 70, 15k gal)
-      // Expected: 58 oz muriatic acid. Validates dose scaling with volume + higher TA.
+      // v11.7: Expected 32 oz (was 58 — prior value matched broken nonlinear formula).
+      // TFP/PoolMath linear: (15000/10000) × 0.6 × (76.67×0.4 + 4.4) = 31.56 → rounds to 32.
       name: 'Acid Dose High pH SWG',
       pool: { volume:15000, isSWG:true,  targetFC:5, targetPH:7.4,
                saltTarget:3200, targetCYA:70 },
       r:    { fc:5, ph:8.0, ta:100, ch:350, cya:70, salt:3200, temp:82 },
-      expect: { acidDose:58 }
+      expect: { acidDose:32 }
     }
   ],
 
