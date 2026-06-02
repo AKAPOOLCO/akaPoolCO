@@ -2048,7 +2048,8 @@ function calcDosing(){
     .filter((_,i)=>[ph,ta,ch,cya,temp][i]===null);
 
   // ── Fix 1 (v9.1): Display-only TA fallback ───────────────────────────
-  // acidDose() requires TA for its buffer-factor formula. When the
+  // acidDose() requires TA for its TFP linear formula (v11.7: adjTA drives
+  // the oz = vol/10k × ΔpH × (adjTA×0.4+4.4) calculation). When the
   // accordion is closed and s-ta is blank, ta===null and the engine
   // returns acidDose=0 — the pH High banner shows but with no dose amount.
   // We substitute TFP baseline 80 ppm HERE ONLY (display panel) so the
