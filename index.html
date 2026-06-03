@@ -1578,6 +1578,12 @@ const ChemEngine = {
     TFP_MIN_LIQUID: [[30,4],[40,5],[50,6],[60,8],[70,9],[80,11]],
     TFP_MIN_SWG:    [[60,4],[70,5],[80,6]],
 
+    // v11.8: TFP SLAM FC target by CYA — FC/CYA chart (outdoor pools, TFP standard).
+    // Used ONLY when CC > 1.0 to compute the SLAM FC target the tech must reach.
+    // Source: https://www.troublefreepool.com/blog/2019/09/27/slam-shock-level-and-maintain/
+    // Update here ONLY if TFP revises their published SLAM table.
+    TFP_SLAM_FC: [[30,12],[40,15],[50,20],[60,24],[70,28],[80,31]],
+
     // Calcium hardness dosing — calcium chloride (77–80% granular)
     CH_PPM_PER_LB_10K:     8.3,    // v11.7: 1 lb 77% CaCl2 raises CH ~8.3 ppm per 10,000 gal (TFP: 1.2 lbs per 10 ppm per 10k gal)
     DEFAULT_TARGET_CH:     250,    // default CH target for non-SWG pools (ppm)
@@ -1589,10 +1595,10 @@ const ChemEngine = {
     // Salt dosing
     SALT_PPM_PER_LB_10K:   12,     // 1 lb salt per 10,000 gal raises ~12 ppm
 
-    // CYA dosing — liquid stabilizer (≈45% cyanuric acid, standard in CA)
-    // 1 fl oz liquid CYA per 10,000 gal raises ≈ 0.43 ppm (i.e. ~2.3 fl oz per 1 ppm)
-    // Verify against your specific product label — concentrations vary 35–65%
-    CYA_FLOZ_PER_PPM_10K:  4.0,    // fl oz of liquid stabilizer per 1 ppm rise per 10k gal (128 fl oz raises 32 ppm → 128/32 = 4.0 — TFP verified)
+    // CYA dosing — dry granular stabilizer (100% cyanuric acid powder)
+    // TFP standard: 4 fl oz (by volume measure) of 100% dry CYA per ppm per 10k gal.
+    // Verified: 128 oz raises 32 ppm in 10k gal → 128/32 = 4.0. Use dry granular ONLY.
+    CYA_FLOZ_PER_PPM_10K:  4.0,    // v11.8: oz of 100% dry CYA granular per 1 ppm rise per 10k gal
 
     // Demand rate / anomaly detection
     MS_PER_DAY:            864e5,  // milliseconds in one day
@@ -1678,6 +1684,21 @@ const ChemEngine = {
     for(let i=0; i<tbl.length-1; i++){
       const [c0,f0]=tbl[i], [c1,f1]=tbl[i+1];
       if(cya>=c0 && cya<=c1) return f0+(f1-f0)*(cya-c0)/(c1-c0);
+    }
+    return tbl[0][1];
+  },
+
+  // v11.8: TFP SLAM FC target lookup — returns the FC level the tech must raise to
+  // when performing the SLAM process. Driven solely by CYA (FC/CYA relationship).
+  // Reads from factors.TFP_SLAM_FC — single source of truth. Same interpolation
+  // pattern as getTfpMinFC(). Called by calcAll() only when cc > 1.0.
+  getSlamFC(cya){
+    const tbl = this.factors.TFP_SLAM_FC;
+    if(!cya || cya <= tbl[0][0])          return tbl[0][1];
+    if(cya >= tbl[tbl.length-1][0])       return tbl[tbl.length-1][1];
+    for(let i=0; i<tbl.length-1; i++){
+      const [c0,f0]=tbl[i], [c1,f1]=tbl[i+1];
+      if(cya>=c0 && cya<=c1) return Math.round(f0+(f1-f0)*(cya-c0)/(c1-c0));
     }
     return tbl[0][1];
   },
@@ -1779,15 +1800,6 @@ const ChemEngine = {
   ccFromTCFC(tc, fc){
     if(tc==null||fc==null||isNaN(tc)||isNaN(fc)) return null;
     return Math.max(0, Math.round((tc-fc)*10)/10);
-  },
-
-  // CC semantic status — returns {level, label, note} or null
-  // level: 'ok'|'elevated'|'high'
-  ccStatus(cc){
-    if(cc===null) return null;
-    if(cc<=0.5) return{level:'ok',     label:'CC OK',         note:'CC ≤ 0.5 ppm — chloramines within normal range.'};
-    if(cc<=1.0) return{level:'elevated',label:'CC Elevated',  note:'CC 0.5–1.0 ppm — slightly elevated. Test again next visit; consider shocking if rising.'};
-    return       {level:'high',         label:'CC HIGH — Shock',note:`CC > 1.0 ppm — breakpoint shock required. Raise FC to ${Math.round(cc*10)} ppm (10× CC).`};
   },
 
   // FC/pH trend — returns 'up'|'down'|'stable'|null
@@ -1908,11 +1920,18 @@ const ChemEngine = {
     const chDose_v   = ch!=null ? this.chDose(ch, targetCH, vol) : 0;
     const bicarbDose = ta!=null ? this.bicarbDose(ta, targetTA, vol) : 0;
 
+    // v11.8: SLAM FC target — computed only when CC > 1.0 (TFP SLAM process trigger).
+    // Returns 0 when CC is absent or below threshold so display layer needs no null guard.
+    const {cc} = readings;
+    const slamFC = (cc!=null && cc>1.0 && cya!=null) ? this.getSlamFC(cya) : 0;
+
     return {
       // Doses
       csiVal, csiResult, fcStatus, clDose, acidDose, phUpDose, saltDose, cyaDose,
       // CSI corrective doses
       chDose: chDose_v, bicarbDose, targetCH, targetTA,
+      // SLAM
+      slamFC,
       // Targets + vol + thresholds — single source of truth, passed to email builder
       targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType, fcHighThreshold
     };
@@ -1967,6 +1986,13 @@ function trendHtml(trend,field){
   return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
+// v11.81: Removed dead code ccStatus() — confirmed zero callers; display block renders CC inline.
+// v11.8: CC block replaced breakpoint chlorination (10×CC) with TFP SLAM process.
+//        Added TFP_SLAM_FC table to factors, getSlamFC() method to ChemEngine,
+//        slamFC field to calcAll() return object. CC>1.0 now shows SLAM FC target
+//        keyed to CYA (e.g. CYA50→20ppm) instead of legacy 10×CC formula.
+//        CYA product label corrected: 100% dry granular (was "~45% liquid").
+//        QA golden test 6 added: SLAM FC Target CYA50 → slamFC=20. Count: 5→6.
 // v11.7: acidDose() replaced nonlinear formula (bufferFactor+phImpact^1.3) with TFP/PoolMath
 //        linear model: oz=(vol/10k)×deltaPH×(adjTA×0.4+4.4). Fixes ~68% over-dose vs PoolMath.
 //        CH_PPM_PER_LB_10K updated 8→8.3 (TFP 77% CaCl2 standard: 1.2 lbs/10ppm/10k gal).
@@ -2069,7 +2095,8 @@ function calcDosing(){
   const {csiVal, csiResult:cs, fcStatus,
          clDose, acidDose, phUpDose, saltDose, cyaDose,
          chDose, bicarbDose, targetCH, targetTA,
-         targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType} = R;
+         targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType,
+         slamFC} = R;
 
   let html = '';
 
@@ -2244,12 +2271,12 @@ function calcDosing(){
     const ccCls  = ccOk?'d-ok':ccHigh?'d-alert':'d-warn';
     const ccTcls = ccOk?'c-ok':ccHigh?'c-alert':'c-warn';
     html+=`<div class="dose-block ${ccCls}">
-      <div class="dose-title ${ccTcls}">${ccOk?'✅ CC — Chloramines OK':ccHigh?'🚨 CC HIGH — Shock Required':'⚠️ CC Elevated — Monitor'}</div>
+      <div class="dose-title ${ccTcls}">${ccOk?'✅ CC — Chloramines OK':ccHigh?'🚨 CC HIGH — Begin SLAM Process':'⚠️ CC Elevated — Monitor'}</div>
       <div class="dose-row"><span>Combined Chlorine</span><span class="dose-val">${cc} ppm</span></div>
       <div class="dose-row"><span>Calculated</span><span class="dose-val">TC (${tc??'—'}) − FC (${fc??'—'})</span></div>
       ${ccOk?`<div class="dose-note">CC ≤ 0.5 ppm — chloramines within normal range.</div>`:''}
-      ${!ccOk&&!ccHigh?`<div class="dose-note">CC 0.5–1.0 ppm — slightly elevated. Test again next visit; consider shocking if rising.</div>`:''}
-      ${ccHigh?`<div class="dose-note">CC > 1.0 ppm — breakpoint shock required. Add enough chlorine to raise FC to 10× the CC level (${Math.round(cc*10)} ppm FC target).</div>`:''}
+      ${!ccOk&&!ccHigh?`<div class="dose-note">CC 0.5–1.0 ppm — slightly elevated. Test again next visit; consider SLAM if rising.</div>`:''}
+      ${ccHigh?`<div class="dose-note"><strong>TFP SLAM Process required.</strong> Raise FC to <strong>${slamFC} ppm</strong> (SLAM level for CYA ${cya??'—'} ppm). Maintain FC at or above ${slamFC} ppm continuously. Perform Overnight Chlorine Loss Test (OCLT) nightly — SLAM is complete only when: FC loss &lt;1 ppm overnight AND CC ≤ 0.5 ppm AND water is visually clear.</div>`:''}
     </div>`;
   }
 
@@ -2273,7 +2300,7 @@ function calcDosing(){
       <div class="dose-title ${cyaHigh?'c-alert':cyaDose>0?'c-warn':'c-ok'}">☀️ CYA (Stabilizer)</div>
       <div class="dose-row"><span>Current CYA</span><span class="dose-val">${cya} ppm</span></div>
       <div class="dose-row"><span>Target CYA</span><span class="dose-val">${targetCYA} ppm</span></div>
-      ${cyaDose>0?`<div class="dose-row"><span><strong>Add liquid stabilizer</strong></span><span class="dose-val"><strong>${cyaDose} fl oz</strong></span></div><div class="dose-note">Liquid CYA (~45%): pour in front of return jet. Retest after 24h full circulation.</div>`:''}
+      ${cyaDose>0?`<div class="dose-row"><span><strong>Add dry CYA granular</strong></span><span class="dose-val"><strong>${cyaDose} oz (by weight)</strong></span></div><div class="dose-note">100% dry CYA (granular stabilizer): pre-dissolve in bucket of water, then pour in front of return jet. Do not add directly to skimmer. Retest after 24h full circulation.</div>`:''}
       ${cyaHigh?`<div class="dose-note">⚠️ CYA too high — reduces chlorine effectiveness. Dilution only: partially drain and refill. No chemical can reduce CYA.</div>`:''}
       ${cyaOk?`<div class="dose-note">CYA in range. No action needed.</div>`:''}
     </div>`;
@@ -3210,7 +3237,7 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
           {lbl:'CYA (Stabilizer)',  val:cya, unit:'ppm', target:pool.targetCYA||70,
            ok:cya!=null&&cya>=(pool.targetCYA||70)-10&&cya<=(pool.targetCYA||70)+20,
            warn:cya!=null&&cya>(pool.targetCYA||70)+30,
-           action:cyaDose>0?`Add ${cyaDose} fl oz liquid stabilizer`:cya!=null&&cya>(pool.targetCYA||70)+30?'Too high — partial drain only':''},
+           action:cyaDose>0?`Add ${cyaDose} oz dry CYA granular (100%)`:cya!=null&&cya>(pool.targetCYA||70)+30?'Too high — partial drain only':''},
           ...(pool.isSWG?[{lbl:'Salt Level', val:salt, unit:'ppm', target:pool.saltTarget||3200,
            ok:salt!=null&&salt>=(pool.saltTarget||3200)-100&&salt<=(pool.saltTarget||3200)+300,
            warn:salt!=null&&(salt<2500||salt>4000),
@@ -3245,7 +3272,7 @@ function buildHTMLEmail(pool,log,fcStatus,clDose,acidDose,phUpDose,saltDose,cyaD
           <td style="padding:9px 10px;font-size:13px;font-weight:700;text-align:center;font-family:monospace;color:${cc>1?'#dc2626':cc>0.5?'#b45309':'#16a34a'};">${cc} ppm</td>
           <td style="padding:9px 10px;font-size:11px;color:#64748b;text-align:center;">≤ 0.5 ppm</td>
           <td style="padding:9px 10px;text-align:right;">
-            <span style="background:${cc>1?'#fff1f2':cc>0.5?'#fffbeb':'#f0fdf4'};color:${cc>1?'#dc2626':cc>0.5?'#b45309':'#16a34a'};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;">${cc>1?'🚨 Shock':'CC>0.5 — Monitor'||'✓ OK'}</span>
+            <span style="background:${cc>1?'#fff1f2':cc>0.5?'#fffbeb':'#f0fdf4'};color:${cc>1?'#dc2626':cc>0.5?'#b45309':'#16a34a'};font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;">${cc>1?'🚨 SLAM Required':'CC>0.5 — Monitor'||'✓ OK'}</span>
           </td>
         </tr>`:''}
       </table>
@@ -3488,7 +3515,7 @@ function showHistory(poolId){
           ${doseRow('Muriatic acid',   R.acidDose, 'fl oz', 'var(--yellow)')}
           ${doseRow('Soda ash (pH up)',R.phUpDose, 'fl oz')}
           ${doseRow('Salt',            R.saltDose, 'lbs',   'var(--swg)')}
-          ${doseRow('Liquid stabilizer', R.cyaDose,'fl oz')}
+          ${doseRow('Dry CYA granular',  R.cyaDose,'oz')}
           ${doseRow('Calcium chloride', R.chDose,  'lbs')}
           ${doseRow('Baking soda (TA)', R.bicarbDose,'lbs')}
           `:''}
@@ -4436,6 +4463,16 @@ const QA = {
                saltTarget:3200, targetCYA:70 },
       r:    { fc:5, ph:8.0, ta:100, ch:350, cya:70, salt:3200, temp:82 },
       expect: { acidDose:32 }
+    },
+    {
+      // v11.8: SLAM FC target — CC > 1.0 with CYA 50 must return slamFC = 20 ppm.
+      // TFP FC/CYA chart: CYA 50 → SLAM level 20 ppm (not 10×CC breakpoint = 15 ppm).
+      // Validates: getSlamFC() lookup, calcAll() slamFC field, TFP_SLAM_FC table.
+      name: 'SLAM FC Target CYA50',
+      pool: { volume:24000, isSWG:true, targetFC:5, targetPH:7.4,
+               saltTarget:3400, targetCYA:70 },
+      r:    { fc:5, ph:7.8, ta:80, ch:250, cya:50, cc:1.5, salt:3400, temp:76 },
+      expect: { slamFC:20 }
     }
   ],
 
@@ -4462,19 +4499,22 @@ const QA = {
         const hasDose = 'clDose'   in test.expect;
         const hasFc   = 'fcStatus' in test.expect;
         const hasAcid = 'acidDose' in test.expect;
+        const hasSlam = 'slamFC'   in test.expect;
 
         const csiOk   = !hasCsi  || (R.csiVal !== null && Math.abs(R.csiVal - test.expect.csiVal) <= MARGIN);
         const doseOk  = !hasDose || R.clDose   === test.expect.clDose;
         const fcOk    = !hasFc   || R.fcStatus === test.expect.fcStatus;
         const acidOk  = !hasAcid || R.acidDose === test.expect.acidDose;
+        const slamOk  = !hasSlam || R.slamFC   === test.expect.slamFC;
 
-        if(!csiOk || !doseOk || !fcOk || !acidOk){
+        if(!csiOk || !doseOk || !fcOk || !acidOk || !slamOk){
           failures.push(
             `${test.name}: ` +
             (!csiOk  ? `CSI got ${R.csiVal} exp ${test.expect.csiVal} ` : '') +
             (!doseOk ? `clDose got ${R.clDose} exp ${test.expect.clDose} ` : '') +
             (!fcOk   ? `fcStatus got ${R.fcStatus} exp ${test.expect.fcStatus} ` : '') +
-            (!acidOk ? `acidDose got ${R.acidDose} exp ${test.expect.acidDose}` : '')
+            (!acidOk ? `acidDose got ${R.acidDose} exp ${test.expect.acidDose} ` : '') +
+            (!slamOk ? `slamFC got ${R.slamFC} exp ${test.expect.slamFC}` : '')
           );
         }
       });
@@ -4482,7 +4522,7 @@ const QA = {
       if(failures.length === 0){
         // All golden scenarios pass — flash green then hide
         banner.style.cssText='display:block;position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:bold;background:#059669;color:#fff;';
-        msg.textContent = '✓ ENGINE CALIBRATED — all 5 golden scenarios match TFP standards';
+        msg.textContent = '✓ ENGINE CALIBRATED — all 6 golden scenarios match TFP standards';
         setTimeout(()=>{ banner.style.display='none'; }, 2000);
       } else {
         // One or more golden answers wrong — stay red, don't auto-hide
