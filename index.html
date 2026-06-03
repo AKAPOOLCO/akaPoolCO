@@ -876,7 +876,7 @@ a{color:var(--accent);}
             <div class="sop-divider"></div>
             <div class="sop-label">Saltwater generator (SWG) pools</div>
             <div class="sop-item"><span class="sop-bullet">→</span><span>CYA Target: <span class="sop-chip">70 ppm</span> — protects SWG cell from overworking</span></div>
-            <div class="sop-item"><span class="sop-bullet">→</span><span>Salt Target: <span class="sop-chip">3200 ppm</span> — standard for Pentair/Hayward</span></div>
+            <div class="sop-item"><span class="sop-bullet">→</span><span>Salt Target: <span class="sop-chip">3400 ppm</span> — Pentair IntelliChlor optimal; 3200 ppm for Hayward</span></div>
             <div class="sop-item"><span class="sop-bullet">→</span><span>Liquid chlorine dosing is suppressed for SWG pools unless FC drops below <span class="sop-chip sop-chip-red">2.0 ppm</span></span></div>
           </div>
         </div>
@@ -999,7 +999,7 @@ a{color:var(--accent);}
         <div class="form-group" style="margin-bottom:0;">
           <label class="form-label">SWG Brand</label>
           <select class="form-select" id="p-swg-brand">
-            <option value="pentair">Pentair (3200)</option>
+            <option value="pentair">Pentair IntelliChlor (3400)</option>
             <option value="hayward">Hayward (2700–3400)</option>
             <option value="jandy">Jandy (3400–3600)</option>
             <option value="other">Other</option>
@@ -1595,6 +1595,12 @@ const ChemEngine = {
     // Salt dosing
     SALT_PPM_PER_LB_10K:   12,     // 1 lb salt per 10,000 gal raises ~12 ppm
 
+    // SWG brand-specific salt thresholds
+    // Pentair IntelliChlor: optimal 3400 ppm, red-light warning below 2800 ppm, shutdown below 2400 ppm
+    PENTAIR_SALT_OPTIMAL:  3400,   // IntelliChlor ideal midpoint (ppm)
+    PENTAIR_SALT_WARN:     2800,   // Below this → IntelliChlor red warning light (ppm)
+    PENTAIR_SALT_MIN:      2400,   // Below this → IntelliChlor shuts down (ppm)
+
     // CYA dosing — dry granular stabilizer (100% cyanuric acid powder)
     // TFP standard: 4 fl oz (by volume measure) of 100% dry CYA per ppm per 10k gal.
     // Verified: 128 oz raises 32 ppm in 10k gal → 128/32 = 4.0. Use dry granular ONLY.
@@ -1880,9 +1886,17 @@ const ChemEngine = {
     const {fc, ph, ta, ch, cya, salt, temp} = readings;
     const vol       = pool.volume       || this.factors.DEFAULT_POOL_VOL;
     const isSWG     = !!pool.isSWG;
-    const targetFC  = pool.targetFC     || 6;
+    // v11.82: For SWG pools, fall back to TFP-derived FC target from CYA rather than
+    // hardcoded 6 ppm — prevents stale profile default from overriding TFP table.
+    const _storedFC  = pool.targetFC;
+    const targetFC   = _storedFC && _storedFC !== 6
+      ? _storedFC
+      : (pool.isSWG && pool.targetCYA
+          ? ChemEngine.suggestTargetFC(pool.targetCYA, true, 'summer')
+          : (_storedFC || 6));
     const targetPH  = pool.targetPH     || 7.4;
     const targetSalt= pool.saltTarget   || 3200;
+    const swgBrand  = pool.swgBrand     || 'pentair';
     const targetCYA = pool.targetCYA    || 70;
 
     // CSI
@@ -1933,7 +1947,8 @@ const ChemEngine = {
       // SLAM
       slamFC,
       // Targets + vol + thresholds — single source of truth, passed to email builder
-      targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType, fcHighThreshold
+      targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType, fcHighThreshold,
+      swgBrand
     };
   }
 
@@ -1986,6 +2001,16 @@ function trendHtml(trend,field){
   return                    `<span class="trend-chip trend-dn">↓ ${lbl} dropping</span>`;
 }
 
+// v11.82: Pentair IntelliChlor salt thresholds — 3 fixes:
+//   1. Salt target corrected to 3400 ppm for Pentair IntelliChlor (was 3200).
+//   2. Salt block now shows 🚨 Pentair red-light warning when salt < 2800 ppm,
+//      with explicit message to prioritize salt before other chemistry adjustments.
+//   3. SWG FC action row shows "Fix salt first — cell output impaired" warning
+//      when Pentair salt is below 2800 ppm, instead of misleading "Boost SWG output".
+//   4. calcAll() targetFC for SWG pools now falls back to TFP CYA-derived value
+//      (suggestTargetFC) instead of hardcoded 6 ppm, fixing incorrect FC target
+//      for CYA 70 SWG (correct = 5.5 ppm, was showing 6 ppm from stale default).
+//   5. Brand-aware salt defaults: Pentair → 3400, Jandy → 3500, others → 3200.
 // v11.81: Removed dead code ccStatus() — confirmed zero callers; display block renders CC inline.
 // v11.8: CC block replaced breakpoint chlorination (10×CC) with TFP SLAM process.
 //        Added TFP_SLAM_FC table to factors, getSlamFC() method to ChemEngine,
@@ -2096,7 +2121,7 @@ function calcDosing(){
          clDose, acidDose, phUpDose, saltDose, cyaDose,
          chDose, bicarbDose, targetCH, targetTA,
          targetFC, targetPH, targetSalt, targetCYA, vol, isSWG, poolType,
-         slamFC} = R;
+         slamFC, swgBrand} = R;
 
   let html = '';
 
@@ -2117,7 +2142,7 @@ function calcDosing(){
         <div class="dose-title ${fcTcls}">${isCrit?'🚨 CRITICAL FC':'⚡ SWG — Free Chlorine'}</div>
         <div class="dose-row"><span>Current FC</span><span class="dose-val">${fc} ppm</span></div>
         <div class="dose-row"><span>Target FC</span><span class="dose-val">${targetFC} ppm</span></div>
-        <div class="dose-row"><span>Action</span><span class="dose-val">${fc>=targetFC?'Generator managing':'Boost SWG output'}</span></div>
+        <div class="dose-row"><span>Action</span><span class="dose-val">${fc>=targetFC?'Generator managing':(()=>{const isPent=(swgBrand||'pentair')==='pentair';const saltLow=salt!==null&&salt<ChemEngine.factors.PENTAIR_SALT_WARN;return isPent&&saltLow?'⚠️ Fix salt first — cell output impaired':'Boost SWG output';})()}</span></div>
         ${getTrend(poolId,'fc')?`<div class="dose-row"><span>FC trend</span><span>${trendHtml(getTrend(poolId,'fc'),'fc')}</span></div>`:''}
         ${isCrit?`<div class="dose-note">CRITICAL — SWG cannot recover this fast. Manually shock pool immediately.</div>`:''}
         ${_swgCriticalDose>0?`<div class="dose-row"><span><strong>Shock dose needed</strong></span><span class="dose-val"><strong>${_swgCriticalDose} oz liquid Cl</strong></span></div>`:''}
@@ -2282,12 +2307,29 @@ function calcDosing(){
 
   // ── Salt block (SWG only) ──
   if(isSWG&&salt!==null){
+    const f_salt = ChemEngine.factors;
+    // Pentair IntelliChlor: red-light warning below 2800 ppm; optimal 3400 ppm
+    const isPentair = (swgBrand||'pentair') === 'pentair';
+    const pentairWarn = isPentair && salt < f_salt.PENTAIR_SALT_WARN;   // below 2800 → red light
+    const pentairMin  = isPentair && salt < f_salt.PENTAIR_SALT_MIN;    // below 2400 → shutdown
     const saltOk = salt>=targetSalt-100&&salt<=targetSalt+300;
-    html+=`<div class="dose-block ${saltOk?'d-teal':saltDose>0?'d-warn':'d-ok'}">
-      <div class="dose-title ${saltOk?'c-teal':saltDose>0?'c-warn':'c-ok'}">🧂 Salt Level</div>
+    // Severity: shutdown > red-light warning > generic low > ok
+    const saltSeverity = pentairMin ? 'alert' : pentairWarn ? 'alert' : saltDose>0 ? 'warn' : saltOk ? 'teal' : 'ok';
+    const saltDCls = pentairMin||pentairWarn ? 'd-alert' : saltDose>0 ? 'd-warn' : saltOk ? 'd-teal' : 'd-ok';
+    const saltTCls = pentairMin||pentairWarn ? 'c-alert' : saltDose>0 ? 'c-warn' : saltOk ? 'c-teal' : 'c-ok';
+    // Title
+    const saltTitle = pentairMin
+      ? '🚨 CRITICAL — Salt Too Low (Cell Shutdown Risk)'
+      : pentairWarn
+        ? '🚨 Low Salt — Pentair Red Warning Light'
+        : saltDose>0 ? '⚠️ Salt Low — Add Salt' : '✅ Salt Level OK';
+    html+=`<div class="dose-block ${saltDCls}">
+      <div class="dose-title ${saltTCls}">🧂 ${saltTitle}</div>
       <div class="dose-row"><span>Current salt</span><span class="dose-val">${salt} ppm</span></div>
-      <div class="dose-row"><span>Target salt</span><span class="dose-val">${targetSalt} ppm</span></div>
+      <div class="dose-row"><span>Target salt</span><span class="dose-val">${targetSalt} ppm${isPentair?' (Pentair IntelliChlor optimal)':''}</span></div>
       ${saltDose>0?`<div class="dose-row"><span><strong>Add salt</strong></span><span class="dose-val"><strong>${saltDose} lbs</strong></span></div><div class="dose-note">1 lb per 10,000 gal ≈ 12 ppm rise. Brush in and allow 24h to circulate.</div>`:''}
+      ${pentairWarn&&!pentairMin?`<div class="dose-note"><strong>Pentair IntelliChlor Warning:</strong> Salt below ${f_salt.PENTAIR_SALT_WARN} ppm — cell will display a red warning light and chlorine output is significantly reduced. Prioritize adding salt before adjusting any other chemistry.</div>`:''}
+      ${pentairMin?`<div class="dose-note"><strong>Pentair IntelliChlor CRITICAL:</strong> Salt below ${f_salt.PENTAIR_SALT_MIN} ppm — cell may shut down entirely. Add salt immediately and do not run the SWG until salt reaches at least ${f_salt.PENTAIR_SALT_WARN} ppm.</div>`:''}
       ${salt>targetSalt+400?`<div class="dose-note">Salt is high. Partial drain/refill is the only way to reduce salt.</div>`:''}
     </div>`;
   }
@@ -4046,7 +4088,10 @@ function toggleSWG(){
   const season = document.getElementById('p-season').value||null;
   if(swgOn){
     document.getElementById('p-tcya').value = '70';
-    if(!document.getElementById('p-salt').value) document.getElementById('p-salt').value='3200';
+    if(!document.getElementById('p-salt').value){
+      const brand = document.getElementById('p-swg-brand').value||'pentair';
+      document.getElementById('p-salt').value = brand==='pentair' ? '3400' : brand==='jandy' ? '3500' : '3200';
+    }
     if(season) document.getElementById('p-tfc').value = ChemEngine.suggestTargetFC(70, true, season);
   } else {
     document.getElementById('p-tcya').value = '40';
@@ -4075,7 +4120,7 @@ function savePool(){
     targetTA:parseFloat(document.getElementById('p-tta').value)||80,
     poolType:document.getElementById('p-pool-type').value||'plaster',
     isSWG:swgOn,
-    saltTarget:parseFloat(document.getElementById('p-salt').value)||3200,
+    saltTarget:parseFloat(document.getElementById('p-salt').value)||(document.getElementById('p-swg-brand').value==='pentair'?3400:document.getElementById('p-swg-brand').value==='jandy'?3500:3200),
     swgBrand:document.getElementById('p-swg-brand').value,
     notes:document.getElementById('p-notes').value.trim(),
     defaultWork:getProfileWork(),
